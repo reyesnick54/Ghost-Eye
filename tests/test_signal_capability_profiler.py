@@ -1,4 +1,4 @@
-import pytest
+import unittest
 
 from ghost_eye.inference.signal_capability_profiler import SignalCapabilityProfiler
 
@@ -56,69 +56,70 @@ EXPECTED_MODE_PROFILES = {
 }
 
 
-def test_profile_for_mode_returns_requested_fields_for_every_mode():
-    profiler = SignalCapabilityProfiler()
+class SignalCapabilityProfilerTests(unittest.TestCase):
+    def test_profile_for_mode_returns_requested_fields_for_every_mode(self):
+        profiler = SignalCapabilityProfiler()
 
-    for mode, expected in EXPECTED_MODE_PROFILES.items():
-        profile = profiler.profile_for_mode(mode)
+        for mode, expected in EXPECTED_MODE_PROFILES.items():
+            with self.subTest(mode=mode):
+                profile = profiler.profile_for_mode(mode)
 
-        assert profile["mode"] == mode
-        for key, value in expected.items():
-            assert profile[key] == value
-        assert isinstance(profile["recommended_scan_mode"], str)
-        assert profile["recommended_scan_mode"]
-        assert isinstance(profile["limitations"], list)
-        assert profile["limitations"]
+                self.assertEqual(profile["mode"], mode)
+                for key, value in expected.items():
+                    self.assertEqual(profile[key], value)
+                self.assertIsInstance(profile["recommended_scan_mode"], str)
+                self.assertTrue(profile["recommended_scan_mode"])
+                self.assertIsInstance(profile["limitations"], list)
+                self.assertTrue(profile["limitations"])
+
+    def test_profile_classifies_descriptive_strings(self):
+        cases = [
+            ("simulated-demo", "simulator"),
+            ("wifi RSSI only", "wifi_only_rssi"),
+            ("wifi RSSI latency", "wifi_only_rssi_latency"),
+            ("wifi FTM RTT", "wifi_only_rtt_if_available"),
+            ("single router wifi", "single_router_wifi_only"),
+            ("esp32 CSI", "esp32_csi_placeholder"),
+            ("OpenWRT router adapter", "router_adapter_placeholder"),
+        ]
+
+        for source, expected_mode in cases:
+            with self.subTest(source=source):
+                self.assertEqual(SignalCapabilityProfiler().profile(source)["mode"], expected_mode)
+
+    def test_profile_classifies_mapping_hints(self):
+        cases = [
+            ({"supports_rssi_scan": True}, "wifi_only_rssi"),
+            ({"supports_rssi_scan": True, "supports_latency_probe": True}, "wifi_only_rssi_latency"),
+            ({"supports_rtt": True}, "wifi_only_rtt_if_available"),
+            ({"router_count": 1, "supports_rssi_scan": True}, "single_router_wifi_only"),
+            ({"source_type": "esp32", "supports_csi": True}, "esp32_csi_placeholder"),
+            ({"source_type": "router_adapter"}, "router_adapter_placeholder"),
+        ]
+
+        for source, expected_mode in cases:
+            with self.subTest(source=source):
+                self.assertEqual(SignalCapabilityProfiler().classify(source)["mode"], expected_mode)
+
+    def test_keyword_hints_override_source_mapping(self):
+        profile = SignalCapabilityProfiler().profile({"mode": "wifi_only_rssi"}, mode="wifi_only_rtt_if_available")
+
+        self.assertEqual(profile["mode"], "wifi_only_rtt_if_available")
+        self.assertIs(profile["supports_rtt"], True)
+
+    def test_limitations_are_returned_as_independent_lists(self):
+        profiler = SignalCapabilityProfiler()
+        first = profiler.profile_for_mode("wifi_only_rssi")
+        first["limitations"].append("mutated")
+
+        second = profiler.profile_for_mode("wifi_only_rssi")
+
+        self.assertNotIn("mutated", second["limitations"])
+
+    def test_profile_for_mode_rejects_unknown_explicit_modes(self):
+        with self.assertRaises(ValueError):
+            SignalCapabilityProfiler().profile_for_mode("unknown_source")
 
 
-@pytest.mark.parametrize(
-    ("source", "expected_mode"),
-    [
-        ("simulated-demo", "simulator"),
-        ("wifi RSSI only", "wifi_only_rssi"),
-        ("wifi RSSI latency", "wifi_only_rssi_latency"),
-        ("wifi FTM RTT", "wifi_only_rtt_if_available"),
-        ("single router wifi", "single_router_wifi_only"),
-        ("esp32 CSI", "esp32_csi_placeholder"),
-        ("OpenWRT router adapter", "router_adapter_placeholder"),
-    ],
-)
-def test_profile_classifies_descriptive_strings(source, expected_mode):
-    assert SignalCapabilityProfiler().profile(source)["mode"] == expected_mode
-
-
-@pytest.mark.parametrize(
-    ("source", "expected_mode"),
-    [
-        ({"supports_rssi_scan": True}, "wifi_only_rssi"),
-        ({"supports_rssi_scan": True, "supports_latency_probe": True}, "wifi_only_rssi_latency"),
-        ({"supports_rtt": True}, "wifi_only_rtt_if_available"),
-        ({"router_count": 1, "supports_rssi_scan": True}, "single_router_wifi_only"),
-        ({"source_type": "esp32", "supports_csi": True}, "esp32_csi_placeholder"),
-        ({"source_type": "router_adapter"}, "router_adapter_placeholder"),
-    ],
-)
-def test_profile_classifies_mapping_hints(source, expected_mode):
-    assert SignalCapabilityProfiler().classify(source)["mode"] == expected_mode
-
-
-def test_keyword_hints_override_source_mapping():
-    profile = SignalCapabilityProfiler().profile({"mode": "wifi_only_rssi"}, mode="wifi_only_rtt_if_available")
-
-    assert profile["mode"] == "wifi_only_rtt_if_available"
-    assert profile["supports_rtt"] is True
-
-
-def test_limitations_are_returned_as_independent_lists():
-    profiler = SignalCapabilityProfiler()
-    first = profiler.profile_for_mode("wifi_only_rssi")
-    first["limitations"].append("mutated")
-
-    second = profiler.profile_for_mode("wifi_only_rssi")
-
-    assert "mutated" not in second["limitations"]
-
-
-def test_profile_for_mode_rejects_unknown_explicit_modes():
-    with pytest.raises(ValueError):
-        SignalCapabilityProfiler().profile_for_mode("unknown_source")
+if __name__ == "__main__":
+    unittest.main()
