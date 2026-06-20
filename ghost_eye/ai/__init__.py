@@ -1,3 +1,8 @@
+"""AI analysis helpers for Ghost-Eye telemetry."""
+
+from .fallback_ai_analyzer import FallbackAIAnalyzer
+
+__all__ = ["FallbackAIAnalyzer"]
 """Optional AI integrations for Ghost-Eye telemetry analysis."""
 
 from .s3m_bridge import S3MBridge, telemetry_prompt_builder

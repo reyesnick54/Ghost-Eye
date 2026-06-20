@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, List, Literal, Mapping, Optional
+
+from pydantic import BaseModel, Field
 import copy
 from time import time
 import time as time_module
@@ -64,7 +68,7 @@ class ApiScanResponse:
     """Serializable WiFi scan response."""
 
     networks: tuple[ApiWifiNetwork, ...]
-    timestamp: float = field(default_factory=time)
+    timestamp: float = field(default_factory=time.time)
     source: str = "wifi_scan"
 
 
@@ -76,7 +80,7 @@ class ApiInferenceResponse:
     motion_score: float
     zone: str
     confidence: float
-    timestamp: float = field(default_factory=time)
+    timestamp: float = field(default_factory=time.time)
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
