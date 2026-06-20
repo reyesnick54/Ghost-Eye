@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import json
 import math
+import os
 from pathlib import Path
-import sys
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import random
 import statistics
@@ -21,14 +22,7 @@ from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from ghost_eye.inference import DeviceMotionCompensator, DeviceMotionState
-
 app = FastAPI(title="Ghost-Eye Demo API")
-device_motion_compensator = DeviceMotionCompensator()
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,6 +37,16 @@ NOTICE = "Demo simulation only. Authorized test environments only."
 DATA_DIR = Path(__file__).resolve().parent / "data"
 EMPTY_ROOM_BASELINE_FILE = DATA_DIR / "empty_room_baseline.json"
 ZONE_FINGERPRINTS_FILE = DATA_DIR / "zone_fingerprints.json"
+AI_ANALYSIS_ENV = "GHOSTEYE_AI_ANALYSIS"
+AI_MODE = "analysis_only_no_autonomy"
+AI_EXCLUDED_LAYERS = [
+    "c4isr",
+    "autonomy",
+    "robotics_control",
+    "targeting",
+    "weapons",
+    "mission_command",
+]
 
 
 @dataclass
@@ -148,10 +152,14 @@ class GhostEyeTelemetry:
     adaptive_baseline: Dict[str, Any] = field(default_factory=dict)
     confidence_ceiling: Dict[str, Any] = field(default_factory=dict)
     session: Dict[str, Any] = field(default_factory=dict)
+    ai_analysis: Optional[Dict[str, Any]] = None
 
     def to_response(self) -> Dict[str, Any]:
         """Return JSON that keeps the original mobile demo fields at top level."""
-        return asdict(self)
+        response = asdict(self)
+        if response.get("ai_analysis") is None:
+            response.pop("ai_analysis", None)
+        return response
 
 
 class WiFiOnlyAdapter:
@@ -460,6 +468,60 @@ def observation_rssi_map(observation: WiFiObservation) -> Dict[str, float]:
     return {reading.bssid: reading.rssi for reading in observation.access_points}
 
 
+def env_flag_enabled(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def s3m_core_available() -> bool:
+    return importlib.util.find_spec("s3m_core") is not None
+
+
+def ai_status_payload() -> Dict[str, Any]:
+    s3m_available = s3m_core_available()
+    return {
+        "enabled": env_flag_enabled(AI_ANALYSIS_ENV),
+        "provider": "s3m_core" if s3m_available else "fallback",
+        "s3m_available": s3m_available,
+        "mode": AI_MODE,
+        "excluded_layers": AI_EXCLUDED_LAYERS,
+    }
+
+
+def build_ai_analysis(scan_payload: Dict[str, Any]) -> Dict[str, Any]:
+    status = ai_status_payload()
+    motion_score = float(scan_payload.get("motion_score") or 0.0)
+    confidence = float(scan_payload.get("confidence") or 0.0)
+    presence = str(scan_payload.get("presence") or "unknown")
+    zone = str(scan_payload.get("zone") or "unknown")
+
+    if presence == "presence_detected":
+        summary = "Presence-like signal disturbance detected in the scan."
+    elif presence == "possible_presence":
+        summary = "Scan shows possible presence-like signal disturbance."
+    elif presence == "clear":
+        summary = "Scan is currently consistent with a clear environment."
+    else:
+        summary = "Scan analysis completed with an unknown presence state."
+
+    return {
+        "available": True,
+        "provider": status["provider"],
+        "mode": status["mode"],
+        "summary": summary,
+        "confidence": round(min(1.0, max(0.0, confidence)), 2),
+        "signals": {
+            "presence": presence,
+            "motion_score": round(min(1.0, max(0.0, motion_score)), 2),
+            "zone": zone,
+        },
+        "excluded_layers": status["excluded_layers"],
+        "limitations": [
+            "Analysis is limited to coarse WiFi RSSI telemetry.",
+            "No autonomy, targeting, weapons, mission command, robotics control, or C4ISR layers are used.",
+        ],
+    }
+
+
 adapter = WiFiOnlyAdapter()
 capability_profiler = SignalCapabilityProfiler()
 disturbance_detector = DisturbanceFieldDetector()
@@ -532,6 +594,9 @@ def build_telemetry() -> GhostEyeTelemetry:
         session=asdict(session_state),
     )
 
+    if env_flag_enabled(AI_ANALYSIS_ENV):
+        telemetry.ai_analysis = build_ai_analysis(telemetry.to_response())
+
     with state_lock:
         latest_telemetry = telemetry
 
@@ -548,6 +613,8 @@ def root():
         "endpoints": [
             "/health",
             "/scan",
+            "/ai/status",
+            "/ai/analyze-scan",
             "/sources",
             "/source/select",
             "/calibrate/empty-room",
@@ -576,19 +643,23 @@ def scan():
     return build_telemetry().to_response()
 
 
+@app.get("/ai/status")
+def ai_status():
+    return ai_status_payload()
+
+
+@app.post("/ai/analyze-scan")
+def analyze_scan(payload: Optional[Dict[str, Any]] = Body(default=None)):
+    scan_payload = payload or build_telemetry().to_response()
+    return {
+        "status": ai_status_payload(),
+        "ai_analysis": build_ai_analysis(scan_payload),
+    }
+
+
 @app.get("/sources")
 def sources():
     return {"sources": adapter.sources()}
-def scan(
-    device_motion_state: Optional[DeviceMotionState] = Query(
-        default=None,
-        description="Optional device motion state: stable, moving, or unknown.",
-    ),
-):
-    motion_score = round(random.uniform(0.05, 0.95), 2)
-    device_motion = device_motion_compensator.compensate(device_motion_state)
-    base_confidence = round(random.uniform(0.55, 0.96), 2)
-    confidence = round(base_confidence * device_motion.confidence_multiplier, 2)
 
 
 @app.post("/source/select")
@@ -697,17 +768,7 @@ def current_map():
         "tomography": telemetry.tomography,
         "disturbance": telemetry.disturbance,
         "fingerprint": telemetry.fingerprint,
-        "timestamp": time.time(),
-        "mode": "simulated",
-        "presence": presence,
-        "motion_score": motion_score,
-        "zone": random.choice(["zone_a", "zone_b", "zone_c", "unknown"]),
-        "confidence": confidence,
-        "device_stability": device_motion.device_stability,
-        "confidence_multiplier": device_motion.confidence_multiplier,
-        "scan_valid": device_motion.scan_valid,
-        "reason": device_motion.reason,
-        "notice": "Demo simulation only. Authorized test environments only."
+        "notice": NOTICE,
     }
 
 

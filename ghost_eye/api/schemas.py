@@ -2,9 +2,54 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, List, Literal, Mapping, Optional
+
+from pydantic import BaseModel, Field
+import copy
 from time import time
-from typing import Any, Literal, Mapping
+import time as time_module
+from typing import Any, Dict, List, Literal, Mapping, Optional
+
+try:
+    from pydantic import BaseModel, Field
+except ModuleNotFoundError:  # pragma: no cover - exercised only in minimal test environments.
+    class _FieldInfo:
+        def __init__(self, *, default: Any = None, default_factory: Any = None) -> None:
+            self.default = default
+            self.default_factory = default_factory
+
+        def value(self) -> Any:
+            if self.default_factory is not None:
+                return self.default_factory()
+            return copy.deepcopy(self.default)
+
+    def Field(default: Any = None, *, default_factory: Any = None, **_: Any) -> _FieldInfo:
+        return _FieldInfo(default=default, default_factory=default_factory)
+
+    class BaseModel:
+        def __init__(self, **data: Any) -> None:
+            annotations: dict[str, Any] = {}
+            for cls in reversed(type(self).mro()):
+                annotations.update(getattr(cls, "__annotations__", {}))
+
+            for name in annotations:
+                if name in data:
+                    value = data.pop(name)
+                else:
+                    default = getattr(type(self), name, None)
+                    value = default.value() if isinstance(default, _FieldInfo) else copy.deepcopy(default)
+                setattr(self, name, value)
+
+            for name, value in data.items():
+                setattr(self, name, value)
+
+        def dict(self) -> dict[str, Any]:
+            return dict(self.__dict__)
+
+        def model_dump(self) -> dict[str, Any]:
+            return self.dict()
 
 
 @dataclass(frozen=True)
@@ -23,7 +68,7 @@ class ApiScanResponse:
     """Serializable WiFi scan response."""
 
     networks: tuple[ApiWifiNetwork, ...]
-    timestamp: float = field(default_factory=time)
+    timestamp: float = field(default_factory=time.time)
     source: str = "wifi_scan"
 
 
@@ -35,7 +80,7 @@ class ApiInferenceResponse:
     motion_score: float
     zone: str
     confidence: float
-    timestamp: float = field(default_factory=time)
+    timestamp: float = field(default_factory=time.time)
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -44,13 +89,6 @@ def to_dict(schema: object) -> dict[str, Any]:
 
     return asdict(schema)
 """Pydantic schemas for Ghost-Eye API telemetry and calibration payloads."""
-
-from __future__ import annotations
-
-import time
-from typing import Any, Dict, List, Optional
-
-from pydantic import BaseModel, Field
 
 
 SAFE_LIMITATION_NOTICE = (
@@ -62,7 +100,7 @@ SAFE_LIMITATION_NOTICE = (
 class WiFiSignalObservation(BaseModel):
     """A single WiFi scan observation used for coarse non-CSI sensing."""
 
-    timestamp: float = Field(default_factory=time.time)
+    timestamp: float = Field(default_factory=time_module.time)
     bssid: Optional[str] = Field(default=None, description="Access point BSSID, if available.")
     ssid: Optional[str] = Field(default=None, description="Network SSID, if available.")
     rssi_dbm: Optional[float] = Field(default=None, description="Observed RSSI in dBm.")
@@ -118,7 +156,7 @@ class AIAnalysisResult(BaseModel):
 class GhostEyeTelemetry(BaseModel):
     """Response schema for /scan telemetry."""
 
-    timestamp: float = Field(default_factory=time.time)
+    timestamp: float = Field(default_factory=time_module.time)
     mode: str = Field(default="simulated")
     source: SourceInfo = Field(default_factory=SourceInfo)
     presence: str = Field(default="clear")
