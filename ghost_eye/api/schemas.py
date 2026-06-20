@@ -3,11 +3,49 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import copy
 from time import time
 import time as time_module
 from typing import Any, Dict, List, Literal, Mapping, Optional
 
-from pydantic import BaseModel, Field
+try:
+    from pydantic import BaseModel, Field
+except ModuleNotFoundError:  # pragma: no cover - exercised only in minimal test environments.
+    class _FieldInfo:
+        def __init__(self, *, default: Any = None, default_factory: Any = None) -> None:
+            self.default = default
+            self.default_factory = default_factory
+
+        def value(self) -> Any:
+            if self.default_factory is not None:
+                return self.default_factory()
+            return copy.deepcopy(self.default)
+
+    def Field(default: Any = None, *, default_factory: Any = None, **_: Any) -> _FieldInfo:
+        return _FieldInfo(default=default, default_factory=default_factory)
+
+    class BaseModel:
+        def __init__(self, **data: Any) -> None:
+            annotations: dict[str, Any] = {}
+            for cls in reversed(type(self).mro()):
+                annotations.update(getattr(cls, "__annotations__", {}))
+
+            for name in annotations:
+                if name in data:
+                    value = data.pop(name)
+                else:
+                    default = getattr(type(self), name, None)
+                    value = default.value() if isinstance(default, _FieldInfo) else copy.deepcopy(default)
+                setattr(self, name, value)
+
+            for name, value in data.items():
+                setattr(self, name, value)
+
+        def dict(self) -> dict[str, Any]:
+            return dict(self.__dict__)
+
+        def model_dump(self) -> dict[str, Any]:
+            return self.dict()
 
 
 @dataclass(frozen=True)
