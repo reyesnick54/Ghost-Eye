@@ -3,6 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+from pathlib import Path
+import sys
+
+from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 import random
 import statistics
 import time
@@ -14,8 +19,16 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from typing import Optional
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from ghost_eye.inference import DeviceMotionCompensator, DeviceMotionState
 
 app = FastAPI(title="Ghost-Eye Demo API")
+device_motion_compensator = DeviceMotionCompensator()
 
 app.add_middleware(
     CORSMiddleware,
@@ -566,6 +579,16 @@ def scan():
 @app.get("/sources")
 def sources():
     return {"sources": adapter.sources()}
+def scan(
+    device_motion_state: Optional[DeviceMotionState] = Query(
+        default=None,
+        description="Optional device motion state: stable, moving, or unknown.",
+    ),
+):
+    motion_score = round(random.uniform(0.05, 0.95), 2)
+    device_motion = device_motion_compensator.compensate(device_motion_state)
+    base_confidence = round(random.uniform(0.55, 0.96), 2)
+    confidence = round(base_confidence * device_motion.confidence_multiplier, 2)
 
 
 @app.post("/source/select")
@@ -674,6 +697,17 @@ def current_map():
         "tomography": telemetry.tomography,
         "disturbance": telemetry.disturbance,
         "fingerprint": telemetry.fingerprint,
+        "timestamp": time.time(),
+        "mode": "simulated",
+        "presence": presence,
+        "motion_score": motion_score,
+        "zone": random.choice(["zone_a", "zone_b", "zone_c", "unknown"]),
+        "confidence": confidence,
+        "device_stability": device_motion.device_stability,
+        "confidence_multiplier": device_motion.confidence_multiplier,
+        "scan_valid": device_motion.scan_valid,
+        "reason": device_motion.reason,
+        "notice": "Demo simulation only. Authorized test environments only."
     }
 
 
