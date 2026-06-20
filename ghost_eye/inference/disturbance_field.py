@@ -166,7 +166,7 @@ class DisturbanceFieldDetector:
             current.average("packet_loss"),
             reference.average("packet_loss"),
             absolute_scale=0.25,
-            relative_floor=0.02,
+            relative_floor=0.10,
         )
         ap_visibility_delta_score = _ap_visibility_delta_score(current, reference)
 
@@ -412,12 +412,12 @@ def _looks_like_observation_series(observation: Any) -> bool:
     if not observation:
         return False
     # A list of AP entries is a single scan. A list of scans is a baseline series.
-    return not all(_entry_has_ap_identity(item) or _read_field(item, _RSSI_ALIASES) is not None for item in observation)
+    return not all(_looks_like_ap_entry(item) for item in observation)
 
 
 def _extract_ap_entries(observation: Any) -> Tuple[Any, ...]:
     if isinstance(observation, Sequence) and not isinstance(observation, (str, bytes)):
-        if all(_entry_has_ap_identity(item) or _read_field(item, _RSSI_ALIASES) is not None for item in observation):
+        if all(_looks_like_ap_entry(item) for item in observation):
             return tuple(observation)
 
     entries = []
@@ -530,6 +530,12 @@ def _read_field(source: Any, aliases: Sequence[str]) -> Any:
 
 def _entry_has_ap_identity(entry: Any) -> bool:
     return _ap_identifier(entry) is not None
+
+
+def _looks_like_ap_entry(entry: Any) -> bool:
+    if _entry_has_ap_identity(entry):
+        return True
+    return _coerce_float(_read_field(entry, _RSSI_ALIASES)) is not None
 
 
 def _ap_identifier(entry: Any) -> Optional[str]:

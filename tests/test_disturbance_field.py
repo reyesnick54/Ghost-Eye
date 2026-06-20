@@ -117,6 +117,32 @@ class DisturbanceFieldDetectorTests(unittest.TestCase):
         self.assertLess(with_adaptive.motion_score, without_adaptive.motion_score)
         self.assertEqual(with_adaptive.explanation_features["baseline_source"], "adaptive_baseline")
 
+    def test_baseline_can_be_series_of_observations(self):
+        detector = DisturbanceFieldDetector(alpha=1.0)
+        baseline_series = [
+            {
+                "rssi": {"ap-a": -50, "ap-b": -60},
+                "visible_aps": ["ap-a", "ap-b"],
+                "jitter_ms": 5,
+            },
+            {
+                "rssi": {"ap-a": -52, "ap-b": -58},
+                "visible_aps": ["ap-a", "ap-b"],
+                "jitter_ms": 7,
+            },
+        ]
+        current = {
+            "rssi": {"ap-a": -51, "ap-b": -59},
+            "visible_aps": ["ap-a", "ap-b"],
+            "jitter_ms": 6,
+        }
+
+        result = detector.detect(current, baseline_series)
+
+        self.assertEqual(result.presence_state, NO_PRESENCE_DETECTED)
+        self.assertLess(result.explanation_features["rssi_delta_score"], 0.1)
+        self.assertEqual(result.explanation_features["baseline_visible_ap_count"], 2)
+
     def test_empty_or_missing_scan_is_unstable(self):
         detector = DisturbanceFieldDetector(alpha=1.0)
 
