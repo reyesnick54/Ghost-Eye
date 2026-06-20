@@ -1,9 +1,24 @@
-"""GhostEye adapters for WiFi-only sensing sources."""
+"""Adapters for GhostEye signal sources."""
 
-from .esp32_csi_adapter import Esp32CsiAdapter
-from .router_adapter import RouterAdapter
-from .simulator_adapter import SimulatedAccessPoint, SimulatorAdapter
+try:  # Optional placeholders kept for compatibility with earlier imports.
+    from .esp32_csi_adapter import Esp32CsiAdapter
+except Exception:  # pragma: no cover
+    Esp32CsiAdapter = None  # type: ignore[assignment]
+
+try:
+    from .router_adapter import RouterAdapter
+except Exception:  # pragma: no cover
+    RouterAdapter = None  # type: ignore[assignment]
+
+from .simulator_adapter import (
+    WIFI_ONLY_NON_CSI_MODE,
+    SimulatedAccessPoint,
+    SimulatorAdapter,
+    WiFiSignalObservation,
+    WiFiSignalSimulatorAdapter,
+)
 from .wifi_only_adapter import (
+    WiFiOnlyAdapter,
     WifiObservationBatch,
     WifiObservationProvider,
     WifiOnlyAdapter,
@@ -12,23 +27,13 @@ from .wifi_only_adapter import (
 __all__ = [
     "Esp32CsiAdapter",
     "RouterAdapter",
+    "WIFI_ONLY_NON_CSI_MODE",
     "SimulatedAccessPoint",
     "SimulatorAdapter",
-    "WifiObservationBatch",
-    "WifiObservationProvider",
-    "WifiOnlyAdapter",
-"""Adapters for Ghost-Eye signal sources."""
-
-from .simulator_adapter import (
-    WIFI_ONLY_NON_CSI_MODE,
-    WiFiSignalObservation,
-    WiFiSignalSimulatorAdapter,
-)
-from .wifi_only_adapter import WiFiOnlyAdapter
-
-__all__ = [
-    "WIFI_ONLY_NON_CSI_MODE",
     "WiFiOnlyAdapter",
     "WiFiSignalObservation",
     "WiFiSignalSimulatorAdapter",
+    "WifiObservationBatch",
+    "WifiObservationProvider",
+    "WifiOnlyAdapter",
 ]

@@ -1,61 +1,8 @@
-"""Deterministic simulator adapter for WiFi-only GhostEye demos."""
+"""Simulated WiFi-only signal source for GhostEye v0.2.
 
-from __future__ import annotations
-
-from dataclasses import dataclass
-from random import Random
-
-from ghost_eye.wifi.wifi_scan import WifiNetwork
-
-from .wifi_only_adapter import WifiObservationBatch, WifiOnlyAdapter
-
-
-@dataclass(frozen=True)
-class SimulatedAccessPoint:
-    """Configured access point for simulated RSSI scans."""
-
-    ssid: str
-    bssid: str
-    baseline_rssi_dbm: float
-    channel: int
-
-
-class SimulatorAdapter(WifiOnlyAdapter):
-    """Produces repeatable RSSI scans for local development and tests."""
-
-    source = "simulator"
-
-    def __init__(
-        self,
-        access_points: tuple[SimulatedAccessPoint, ...] | None = None,
-        seed: int = 7,
-    ) -> None:
-        self._random = Random(seed)
-        self._access_points = access_points or (
-            SimulatedAccessPoint("ghosteye-a", "02:00:00:00:00:01", -48.0, 1),
-            SimulatedAccessPoint("ghosteye-b", "02:00:00:00:00:02", -61.0, 6),
-            SimulatedAccessPoint("ghosteye-c", "02:00:00:00:00:03", -72.0, 11),
-        )
-
-    def collect(self) -> WifiObservationBatch:
-        networks = []
-        for ap in self._access_points:
-            jitter = self._random.uniform(-2.5, 2.5)
-            networks.append(
-                WifiNetwork(
-                    ssid=ap.ssid,
-                    bssid=ap.bssid,
-                    rssi_dbm=ap.baseline_rssi_dbm + jitter,
-                    channel=ap.channel,
-                    metadata={"simulated": True},
-                )
-            )
-        return self.from_rows(networks)
-"""Simulation source for WiFi-only, non-CSI observations.
-
-This module intentionally models RSSI/scan metadata only. It does not expose
-channel state information (CSI), raw frames, monitor mode capture, or hardware
-specific access.
+The simulator models RSSI scan metadata plus gateway latency/jitter only. It
+does not expose CSI, raw frames, monitor-mode capture, or device identifiers
+beyond synthetic BSSIDs used for local testing.
 """
 
 from __future__ import annotations
@@ -66,15 +13,26 @@ import random
 import statistics
 import time
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 
 WIFI_ONLY_NON_CSI_MODE = "wifi_only_non_csi"
 
 
 @dataclass(frozen=True)
+class SimulatedAccessPoint:
+    """Configured synthetic access point."""
+
+    ssid: str
+    bssid: str
+    baseline_rssi_dbm: float
+    channel: int
+    frequency_mhz: int
+
+
+@dataclass(frozen=True)
 class WiFiSignalObservation:
-    """A single WiFi-only signal observation without CSI data."""
+    """One WiFi-only, non-CSI observation."""
 
     timestamp: float
     ssid: str
@@ -94,60 +52,70 @@ class WiFiSignalObservation:
         if self.mode != WIFI_ONLY_NON_CSI_MODE:
             raise ValueError("WiFiSignalObservation mode must be wifi_only_non_csi")
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Return a JSON-serializable representation."""
+    @property
+    def rssi_by_bssid(self) -> Dict[str, float]:
+        return {
+            str(ap["bssid"]).lower(): float(ap["rssi"])
+            for ap in self.visible_access_points
+            if "bssid" in ap and "rssi" in ap
+        }
 
+    def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
 
 class WiFiSignalSimulatorAdapter:
-    """Generate realistic-enough WiFi RSSI observations for v0.1 backends."""
+    """Generate realistic-enough WiFi RSSI and latency observations."""
 
     mode = WIFI_ONLY_NON_CSI_MODE
 
     def __init__(
         self,
         ssid: str = "GhostEye-Simulated",
-        bssid_count: int = 6,
+        bssid_count: int = 5,
         seed: Optional[int] = None,
         platform_name: Optional[str] = None,
+        access_points: Optional[Tuple[SimulatedAccessPoint, ...]] = None,
     ) -> None:
         if bssid_count <= 0:
             raise ValueError("bssid_count must be greater than zero")
 
         self.ssid = ssid
-        self.bssid_count = bssid_count
         self.platform_name = platform_name or platform_module.system().lower() or "unknown"
         self._rng = random.Random(seed)
         self._step = 0
-        self._access_points = self._build_access_points()
+        self._access_points = access_points or self._build_access_points(bssid_count)
 
     def get_observation(self) -> WiFiSignalObservation:
         """Return one simulated WiFi-only observation."""
 
         self._step += 1
-        drift = math.sin(self._step / 5.0) * 2.5
+        slow_wave = math.sin(self._step / 4.0) * 2.4
+        motion_burst = self._rng.uniform(0.0, 4.5) if self._rng.random() > 0.55 else 0.0
         rssi_vector: List[float] = []
         visible_access_points: List[Dict[str, Any]] = []
 
         for index, ap in enumerate(self._access_points):
-            base_rssi = -45.0 - (index * 4.5)
-            rssi = round(base_rssi + drift + self._rng.gauss(0.0, 2.2), 2)
+            multipath = slow_wave * (1.0 - min(index, 4) * 0.08)
+            burst = motion_burst * math.sin((self._step + index) / 2.0)
+            noise = self._rng.gauss(0.0, 1.6)
+            rssi = round(ap.baseline_rssi_dbm + multipath + burst + noise, 2)
             rssi_vector.append(rssi)
             visible_access_points.append(
                 {
-                    "ssid": ap["ssid"],
-                    "bssid": ap["bssid"],
-                    "channel": ap["channel"],
+                    "ssid": ap.ssid,
+                    "bssid": ap.bssid,
+                    "channel": ap.channel,
+                    "frequency_mhz": ap.frequency_mhz,
                     "rssi": rssi,
                 }
             )
 
         mean_rssi = round(statistics.fmean(rssi_vector), 2)
         rssi_std = round(statistics.pstdev(rssi_vector), 2) if len(rssi_vector) > 1 else 0.0
-        gateway_latency_ms = round(max(1.0, self._rng.gauss(18.0, 4.0)), 2)
-        jitter_ms = round(max(0.0, self._rng.gauss(3.5, 1.2)), 2)
-        packet_loss = round(min(max(self._rng.gauss(0.01, 0.008), 0.0), 0.08), 4)
+        gateway_latency_ms = round(max(1.0, self._rng.gauss(12.0 + motion_burst, 2.8)), 2)
+        jitter_ms = round(max(0.0, self._rng.gauss(2.7 + motion_burst / 4.0, 0.9)), 2)
+        packet_loss = round(min(max(self._rng.gauss(0.004, 0.004), 0.0), 0.05), 4)
         scan_stability = round(min(max(1.0 - (rssi_std / 35.0) - packet_loss, 0.0), 1.0), 4)
 
         return WiFiSignalObservation(
@@ -166,19 +134,30 @@ class WiFiSignalSimulatorAdapter:
             mode=self.mode,
         )
 
-    def _build_access_points(self) -> List[Dict[str, Any]]:
-        access_points: List[Dict[str, Any]] = []
-        for index in range(self.bssid_count):
-            ssid = self.ssid if index == 0 else "{}-neighbor-{}".format(self.ssid, index)
+    def _build_access_points(self, bssid_count: int) -> Tuple[SimulatedAccessPoint, ...]:
+        channels = ((1, 2412), (6, 2437), (11, 2462), (36, 5180), (149, 5745), (153, 5765))
+        access_points = []
+        for index in range(bssid_count):
+            channel, frequency = channels[index % len(channels)]
+            ssid = self.ssid if index == 0 else f"{self.ssid}-neighbor-{index}"
             access_points.append(
-                {
-                    "ssid": ssid,
-                    "bssid": self._generate_bssid(index),
-                    "channel": self._rng.choice([1, 6, 11, 36, 40, 44, 149, 153]),
-                }
+                SimulatedAccessPoint(
+                    ssid=ssid,
+                    bssid=self._generate_bssid(index),
+                    baseline_rssi_dbm=-45.0 - (index * 4.8),
+                    channel=channel,
+                    frequency_mhz=frequency,
+                )
             )
-        return access_points
+        return tuple(access_points)
 
     def _generate_bssid(self, index: int) -> str:
         octets = [0x02, 0x00, 0x00, self._rng.randrange(0, 256), self._rng.randrange(0, 256), index]
-        return ":".join("{:02x}".format(octet) for octet in octets)
+        return ":".join(f"{octet:02x}" for octet in octets)
+
+
+class SimulatorAdapter(WiFiSignalSimulatorAdapter):
+    """Compatibility alias for older imports."""
+
+    def collect(self) -> WiFiSignalObservation:
+        return self.get_observation()
