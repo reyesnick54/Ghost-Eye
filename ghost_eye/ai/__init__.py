@@ -1,3 +1,8 @@
+"""AI-assisted analysis schemas for GhostEye telemetry."""
+
+from .ai_analysis_schema import AIAnalysisRequest, AIAnalysisResult, AIStatus
+
+__all__ = ["AIAnalysisRequest", "AIAnalysisResult", "AIStatus"]
 """AI prompt helpers for GhostEye telemetry analysis."""
 
 from ghost_eye.ai.telemetry_prompt_builder import build_scan_analysis_prompt
