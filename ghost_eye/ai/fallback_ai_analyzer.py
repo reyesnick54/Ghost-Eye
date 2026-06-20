@@ -83,9 +83,11 @@ class FallbackAIAnalyzer:
 
         metadata: dict[str, Any] = {
             "risk_flags": risk_flags,
+            "flags": list(REQUIRED_LIMITATIONS),
             "required_flags": list(REQUIRED_LIMITATIONS),
             "rules_triggered": triggered_rules,
             "telemetry_confidence": confidence,
+            "confidence_capped_to_telemetry": True,
         }
         if jitter is not None:
             metadata["jitter"] = jitter
