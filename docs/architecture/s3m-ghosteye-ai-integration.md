@@ -176,11 +176,11 @@ Recommended checks for this integration boundary:
 
 ```bash
 # Owned GhostEye unit tests.
-python -m unittest discover ghost_eye/tests
+python3 -m unittest discover ghost_eye/tests
 
 # Backend dependency smoke check, if FastAPI dependencies are installed.
-python -m pip install -r ghost_eye/backend/requirements.txt
-python -m uvicorn ghost_eye.backend.app:app --host 127.0.0.1 --port 8000
+python3 -m pip install -r ghost_eye/backend/requirements.txt
+python3 -m uvicorn ghost_eye.backend.app:app --host 127.0.0.1 --port 8000
 
 # Manual API smoke checks while the server is running.
 curl -s http://127.0.0.1:8000/health
@@ -189,7 +189,7 @@ curl -s -X POST http://127.0.0.1:8000/calibrate/empty-room
 curl -s http://127.0.0.1:8000/map/current
 
 # Fallback-mode check for future S3M wiring.
-GHOSTEYE_AI_ANALYSIS_ENABLED=false python -m unittest discover ghost_eye/tests
+GHOSTEYE_AI_ANALYSIS_ENABLED=false python3 -m unittest discover ghost_eye/tests
 ```
 
 When S3M integration tests are added, include cases for allowed component
