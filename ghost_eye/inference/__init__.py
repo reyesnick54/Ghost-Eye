@@ -1,3 +1,16 @@
+"""Ghost-Eye inference helpers."""
+
+from .device_motion_compensator import (
+    DeviceMotionCompensation,
+    DeviceMotionCompensator,
+    DeviceMotionState,
+)
+
+__all__ = [
+    "DeviceMotionCompensation",
+    "DeviceMotionCompensator",
+    "DeviceMotionState",
+]
 """Inference helpers for Ghost-Eye."""
 
 from ghost_eye.inference.session_learner import GhostEyeSessionLearner
