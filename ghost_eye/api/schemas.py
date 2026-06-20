@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from time import time
-from typing import Any, Literal, Mapping
+import time as time_module
+from typing import Any, Dict, List, Literal, Mapping, Optional
+
+from pydantic import BaseModel, Field
 
 
 @dataclass(frozen=True)
@@ -45,13 +48,6 @@ def to_dict(schema: object) -> dict[str, Any]:
     return asdict(schema)
 """Pydantic schemas for Ghost-Eye API telemetry and calibration payloads."""
 
-from __future__ import annotations
-
-import time
-from typing import Any, Dict, List, Optional
-
-from pydantic import BaseModel, Field
-
 
 SAFE_LIMITATION_NOTICE = (
     "WiFi-only non-CSI mode provides coarse probabilistic estimates only. "
@@ -62,7 +58,7 @@ SAFE_LIMITATION_NOTICE = (
 class WiFiSignalObservation(BaseModel):
     """A single WiFi scan observation used for coarse non-CSI sensing."""
 
-    timestamp: float = Field(default_factory=time.time)
+    timestamp: float = Field(default_factory=time_module.time)
     bssid: Optional[str] = Field(default=None, description="Access point BSSID, if available.")
     ssid: Optional[str] = Field(default=None, description="Network SSID, if available.")
     rssi_dbm: Optional[float] = Field(default=None, description="Observed RSSI in dBm.")
@@ -118,7 +114,7 @@ class AIAnalysisResult(BaseModel):
 class GhostEyeTelemetry(BaseModel):
     """Response schema for /scan telemetry."""
 
-    timestamp: float = Field(default_factory=time.time)
+    timestamp: float = Field(default_factory=time_module.time)
     mode: str = Field(default="simulated")
     source: SourceInfo = Field(default_factory=SourceInfo)
     presence: str = Field(default="clear")
