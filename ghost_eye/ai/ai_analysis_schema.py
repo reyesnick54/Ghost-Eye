@@ -96,8 +96,7 @@ class AIAnalysisResult(BaseModel):
         if operator_confidence is None:
             return capped_values
 
-        if telemetry_confidence is not None:
-            operator_confidence = min(operator_confidence, telemetry_confidence)
+        operator_confidence = min(operator_confidence, telemetry_confidence or 0.0)
 
         capped_values["operator_confidence"] = operator_confidence
         return capped_values

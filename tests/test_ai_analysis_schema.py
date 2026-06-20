@@ -6,9 +6,12 @@ from ghost_eye.ai.ai_analysis_schema import AIAnalysisRequest, AIAnalysisResult,
 class AIAnalysisSchemaTest(unittest.TestCase):
     def test_result_exposes_requested_fields(self) -> None:
         result = AIAnalysisResult()
+        fields = getattr(AIAnalysisResult, "model_fields", None)
+        if fields is None:
+            fields = result.__fields__
 
         self.assertEqual(
-            set(result.__fields__),
+            set(fields),
             {
                 "enabled",
                 "provider",
@@ -46,6 +49,11 @@ class AIAnalysisSchemaTest(unittest.TestCase):
 
         self.assertEqual(result.operator_confidence, 0.57)
         self.assertFalse(hasattr(result, "telemetry"))
+
+    def test_operator_confidence_defaults_to_zero_without_telemetry_context(self) -> None:
+        result = AIAnalysisResult(operator_confidence=0.88)
+
+        self.assertEqual(result.operator_confidence, 0.0)
 
     def test_request_derives_telemetry_confidence_from_telemetry_payload(self) -> None:
         request = AIAnalysisRequest(telemetry={"confidence": 0.73})
