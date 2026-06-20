@@ -1,3 +1,8 @@
+"""Optional AI integrations for Ghost-Eye telemetry analysis."""
+
+from .s3m_bridge import S3MBridge, telemetry_prompt_builder
+
+__all__ = ["S3MBridge", "telemetry_prompt_builder"]
 """AI-assisted analysis schemas for GhostEye telemetry."""
 
 from .ai_analysis_schema import AIAnalysisRequest, AIAnalysisResult, AIStatus
