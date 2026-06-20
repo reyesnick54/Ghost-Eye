@@ -1,54 +1,9 @@
-"""Adapter interfaces for GhostEye WiFi-only sensing inputs."""
+"""WiFi-only adapter facade for GhostEye v0.2."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Protocol
-
-from ghost_eye.wifi.gateway_probe import GatewayProbeResult
-from ghost_eye.wifi.wifi_scan import WifiNetwork, WifiScan, parse_wifi_networks
-
-
-@dataclass(frozen=True)
-class WifiObservationBatch:
-    """Collected WiFi observations and optional gateway probe summary."""
-
-    scan: WifiScan
-    gateway_probe: GatewayProbeResult | None = None
-
-
-class WifiObservationProvider(Protocol):
-    """Protocol implemented by concrete WiFi observation adapters."""
-
-    def collect(self) -> WifiObservationBatch:
-        """Collect a batch of WiFi-only observations."""
-
-
-class WifiOnlyAdapter:
-    """Base adapter for sources that provide RSSI observations."""
-
-    source = "wifi_only"
-
-    def from_rows(
-        self,
-        rows: Iterable[WifiNetwork | Mapping[str, object]],
-        gateway_probe: GatewayProbeResult | None = None,
-    ) -> WifiObservationBatch:
-        return WifiObservationBatch(
-            scan=WifiScan(
-                networks=tuple(parse_wifi_networks(rows)),
-                source=self.source,
-            ),
-            gateway_probe=gateway_probe,
-        )
-
-    def collect(self) -> WifiObservationBatch:
-        return self.from_rows(())
-"""Compatibility adapter for WiFi-only, non-CSI signal observations."""
-
-from __future__ import annotations
-
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Protocol, Union
 
 from .simulator_adapter import (
     WIFI_ONLY_NON_CSI_MODE,
@@ -58,6 +13,20 @@ from .simulator_adapter import (
 
 
 ObservationSource = Callable[[], Union[WiFiSignalObservation, Dict[str, Any]]]
+
+
+@dataclass(frozen=True)
+class WifiObservationBatch:
+    """Compatibility wrapper for older batch-oriented imports."""
+
+    observation: WiFiSignalObservation
+
+
+class WifiObservationProvider(Protocol):
+    """Protocol implemented by WiFi observation providers."""
+
+    def get_observation(self) -> WiFiSignalObservation:
+        """Collect one WiFi-only observation."""
 
 
 class WiFiOnlyAdapter:
@@ -80,6 +49,33 @@ class WiFiOnlyAdapter:
         self.simulated = simulated
         self._scanner = scanner
         self._simulator = simulator or WiFiSignalSimulatorAdapter(**simulator_kwargs)
+        self._selected_source_id = "local_wifi_rssi_latency_simulated"
+
+    def sources(self) -> list[dict[str, Any]]:
+        """Return available sources for the API."""
+
+        return [
+            {
+                "id": "local_wifi_rssi_latency_simulated",
+                "name": "Local WiFi RSSI + gateway latency simulator",
+                "mode": self.mode,
+                "type": "wifi_rssi_latency",
+                "simulated": self.simulated,
+                "selected": self._selected_source_id == "local_wifi_rssi_latency_simulated",
+                "capabilities": ["rssi_scan", "gateway_latency", "jitter", "packet_loss"],
+                "csi": False,
+                "status": "available",
+            }
+        ]
+
+    def select_source(self, source_id: str) -> dict[str, Any]:
+        """Select a configured source by ID."""
+
+        for source in self.sources():
+            if source["id"] == source_id:
+                self._selected_source_id = source_id
+                return {**source, "selected": True}
+        raise ValueError(f"Unknown source: {source_id}")
 
     def get_observation(self) -> WiFiSignalObservation:
         """Return one WiFi-only, non-CSI signal observation."""
@@ -97,7 +93,20 @@ class WiFiOnlyAdapter:
         self._validate_mode(normalized)
         return normalized
 
+    def observe(self) -> WiFiSignalObservation:
+        """Compatibility alias for older backend code."""
+
+        return self.get_observation()
+
+    def collect(self) -> WifiObservationBatch:
+        """Compatibility batch wrapper."""
+
+        return WifiObservationBatch(observation=self.get_observation())
+
     @staticmethod
     def _validate_mode(observation: WiFiSignalObservation) -> None:
         if observation.mode != WIFI_ONLY_NON_CSI_MODE:
             raise ValueError("WiFiOnlyAdapter only supports wifi_only_non_csi observations")
+
+
+WifiOnlyAdapter = WiFiOnlyAdapter
