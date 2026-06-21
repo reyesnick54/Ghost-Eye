@@ -3,9 +3,9 @@
 from .adaptive_baseline import AdaptiveBaseline, AdaptiveBaselineEngine, BaselineSnapshot
 from .confidence import ConfidenceCalibrator, ConfidenceCeilingEngine, ConfidenceScore
 from .device_motion_compensator import DeviceMotionCompensation, DeviceMotionCompensator, DeviceMotionState
-from .disturbance_field import DisturbanceFieldDetector, DisturbanceFieldResult
+from .disturbance_field import DisturbanceField, DisturbanceFieldDetector, DisturbanceFieldResult
 from .room_fingerprint_mapper import FingerprintMatch, RoomFingerprint, RoomFingerprintMapper
-from .rss_tomography import OpportunisticRSSITomography, RSSITomographyResult
+from .rss_tomography import OpportunisticRSSITomography, RSSITomographyResult, TomographyCell
 from .session_learner import GhostEyeSessionLearner, SessionLearner
 from .signal_capability_profiler import SignalCapabilityProfile, SignalCapabilityProfiler
 
@@ -19,6 +19,7 @@ __all__ = [
     "DeviceMotionCompensation",
     "DeviceMotionCompensator",
     "DeviceMotionState",
+    "DisturbanceField",
     "DisturbanceFieldDetector",
     "DisturbanceFieldResult",
     "FingerprintMatch",
@@ -30,4 +31,5 @@ __all__ = [
     "SessionLearner",
     "SignalCapabilityProfile",
     "SignalCapabilityProfiler",
+    "TomographyCell",
 ]

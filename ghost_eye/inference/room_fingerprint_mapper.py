@@ -74,7 +74,7 @@ class RoomFingerprintMapper:
 
         for fingerprint in fingerprints:
             zone = str(fingerprint.get("zone", "unknown"))
-            score = self._similarity(current, _rssi_map(fingerprint))
+            score = self._weighted_similarity(observation, fingerprint, current)
             zone_scores[zone] = round(score, 2)
             if score > best_score:
                 best_zone = zone
@@ -147,6 +147,36 @@ class RoomFingerprintMapper:
         with path.open("r", encoding="utf-8") as handle:
             return json.load(handle)
 
+    @classmethod
+    def _weighted_similarity(
+        cls,
+        observation: Mapping[str, Any],
+        fingerprint: Mapping[str, Any],
+        current: Mapping[str, float],
+    ) -> float:
+        rssi_similarity = cls._similarity(current, _rssi_map(fingerprint))
+        latency_similarity = cls._metric_similarity(
+            _read_float(observation, "gateway_latency_ms", 0.0),
+            _read_float(fingerprint, "gateway_latency_ms", 0.0),
+            scale=35.0,
+        )
+        jitter_similarity = cls._metric_similarity(
+            _read_float(observation, "jitter_ms", 0.0),
+            _read_float(fingerprint, "jitter_ms", 0.0),
+            scale=12.0,
+        )
+        ap_visibility_similarity = cls._metric_similarity(
+            float(len(current)),
+            float(len(_rssi_map(fingerprint))),
+            scale=5.0,
+        )
+        return (
+            (rssi_similarity * 0.72)
+            + (latency_similarity * 0.10)
+            + (jitter_similarity * 0.08)
+            + (ap_visibility_similarity * 0.10)
+        )
+
     @staticmethod
     def _similarity(current: Mapping[str, float], fingerprint: Mapping[str, float]) -> float:
         keys = set(current) | set(fingerprint)
@@ -157,6 +187,12 @@ class RoomFingerprintMapper:
             squared += (current.get(key, -100.0) - fingerprint.get(key, -100.0)) ** 2
         rms = math.sqrt(squared / len(keys))
         return max(0.0, min(1.0, 1.0 - rms / 28.0))
+
+    @staticmethod
+    def _metric_similarity(current: float, reference: float, scale: float) -> float:
+        if scale <= 0.0:
+            return 0.0
+        return max(0.0, min(1.0, 1.0 - abs(current - reference) / scale))
 
     @staticmethod
     def _slug(zone_name: str) -> str:

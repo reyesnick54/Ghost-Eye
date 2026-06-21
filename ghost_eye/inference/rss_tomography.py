@@ -26,6 +26,14 @@ class RSSITomographyResult:
         }
 
 
+@dataclass(frozen=True)
+class TomographyCell:
+    """Compatibility cell for zone classifiers; this is not RF imaging."""
+
+    cell_id: str
+    weight: float
+
+
 class OpportunisticRSSITomography:
     """Produce a simple per-zone map from RSSI disturbance and fingerprints."""
 
