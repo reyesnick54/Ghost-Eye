@@ -118,6 +118,20 @@ class AdaptiveBaselineEngine:
     def process_scan(self, scan: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
         return self.update(scan, **kwargs)
 
+    def replace_baseline(self, scan: dict[str, Any]) -> dict[str, Any]:
+        """Replace static and adaptive baselines after explicit empty-room calibration."""
+
+        scan_payload = self._json_safe(scan)
+        self.static_baseline = deepcopy(scan_payload)
+        self.adaptive_baseline = deepcopy(scan_payload)
+        self.last_updated = self._utc_now()
+        self._save()
+        return {
+            "baseline_status": "replaced",
+            "drift_score": 0.0,
+            "last_updated": self.last_updated,
+        }
+
     def drift_score(self) -> float:
         if self.static_baseline is None or self.adaptive_baseline is None:
             return 0.0

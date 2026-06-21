@@ -21,17 +21,20 @@ class DeviceMotionCompensation:
 
 
 class DeviceMotionCompensator:
-    """Apply v0.1 device-motion policy to inference confidence and scan validity."""
+    """Apply placeholder device-motion policy to inference confidence."""
 
     STABLE: DeviceMotionState = "stable"
     MOVING: DeviceMotionState = "moving"
     UNKNOWN: DeviceMotionState = "unknown"
 
-    def __init__(self, moving_confidence_multiplier: float = 0.5) -> None:
+    def __init__(self, moving_confidence_multiplier: float = 0.5, unknown_confidence_multiplier: float = 0.85) -> None:
         if not 0.0 <= moving_confidence_multiplier <= 1.0:
             raise ValueError("moving_confidence_multiplier must be between 0.0 and 1.0")
+        if not 0.0 <= unknown_confidence_multiplier <= 1.0:
+            raise ValueError("unknown_confidence_multiplier must be between 0.0 and 1.0")
 
         self._moving_confidence_multiplier = moving_confidence_multiplier
+        self._unknown_confidence_multiplier = unknown_confidence_multiplier
 
     def compensate(
         self,
@@ -58,10 +61,16 @@ class DeviceMotionCompensator:
 
         return DeviceMotionCompensation(
             device_stability=self.UNKNOWN,
-            confidence_multiplier=1.0,
-            scan_valid=True,
-            reason="device_motion_unknown_no_compensation_applied",
+            confidence_multiplier=self._unknown_confidence_multiplier,
+            scan_valid="degraded",
+            reason="device_motion_unknown_confidence_reduced",
         )
+
+    def apply(self, confidence: float, device_motion_state: Optional[str] = None) -> float:
+        """Apply the confidence multiplier for stable/moving/unknown device state."""
+
+        compensation = self.compensate(device_motion_state)
+        return round(max(0.0, min(1.0, float(confidence) * compensation.confidence_multiplier)), 2)
 
     def baseline_update_allowed(
         self,

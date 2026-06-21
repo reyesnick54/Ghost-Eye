@@ -43,6 +43,13 @@ class ConfidenceCalibrator:
         mean = sum(values) / len(values) if values else 0.0
         return ConfidenceScore(value=_clamp(mean * _clamp(coverage) * _clamp(stability)), reason=reason)
 
+    def from_delta(self, delta: float, threshold: float, reason: str = "signal delta") -> ConfidenceScore:
+        """Score confidence from a baseline-relative delta and threshold."""
+
+        if threshold <= 0.0:
+            raise ValueError("threshold must be positive")
+        return ConfidenceScore(value=_clamp(abs(float(delta)) / float(threshold)), reason=reason)
+
 
 class ConfidenceCeilingEngine:
     """Keep RSSI-only output confidence below the v0.2 non-CSI ceiling."""
@@ -113,7 +120,12 @@ def _motion_ceiling(value: bool | str | None) -> float:
         return 1.0
     if isinstance(value, bool):
         return 0.70 if value else 1.0
-    return 0.70 if value.lower() in {"moving", "unstable"} else 1.0
+    state = value.lower()
+    if state in {"moving", "unstable"}:
+        return 0.50
+    if state == "unknown":
+        return 0.58
+    return 1.0
 
 
 def _ambiguity_ceiling(value: float | bool | str | None) -> float:

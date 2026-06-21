@@ -28,7 +28,9 @@ from ghost_eye.api.schemas import (  # noqa: E402
 )
 from ghost_eye.csi_adapters import WiFiOnlyAdapter  # noqa: E402
 from ghost_eye.inference import (  # noqa: E402
+    AdaptiveBaselineEngine,
     ConfidenceCeilingEngine,
+    DeviceMotionCompensator,
     DisturbanceFieldDetector,
     RoomFingerprintMapper,
     SessionLearner,
@@ -54,6 +56,7 @@ BASELINE_DIR = SESSION_DIR / "baselines"
 FINGERPRINT_DIR = SESSION_DIR / "fingerprints"
 EMPTY_ROOM_BASELINE_FILE = BASELINE_DIR / "empty_room.json"
 AI_ANALYSIS_ENV = "GHOSTEYE_AI_ANALYSIS"
+DEVICE_MOTION_STATE_ENV = "GHOSTEYE_DEVICE_MOTION_STATE"
 AI_MODE = "analysis_only_no_autonomy"
 AI_EXCLUDED_LAYERS = [
     "c4isr",
@@ -71,9 +74,15 @@ for directory in (LOG_DIR, BASELINE_DIR, FINGERPRINT_DIR):
 adapter = WiFiOnlyAdapter(seed=42, bssid_count=5)
 capability_profiler = SignalCapabilityProfiler()
 disturbance_detector = DisturbanceFieldDetector()
+adaptive_baseline_engine = AdaptiveBaselineEngine(
+    session_id="adaptive_empty_room",
+    baseline_dir=BASELINE_DIR,
+    adaptation_rate=0.2,
+)
 fingerprint_mapper = RoomFingerprintMapper(FINGERPRINT_DIR)
 tomography_engine = OpportunisticRSSITomography()
 confidence_engine = ConfidenceCeilingEngine()
+device_motion_compensator = DeviceMotionCompensator()
 session_learner = SessionLearner(LOG_DIR)
 state_lock = Lock()
 latest_telemetry: Optional[Dict[str, Any]] = None
@@ -88,7 +97,19 @@ def build_telemetry() -> Dict[str, Any]:
     observation_payload = observation.to_dict()
     capabilities = capability_profiler.profile(observation)
     baseline = load_json(EMPTY_ROOM_BASELINE_FILE, None)
-    disturbance = disturbance_detector.detect(observation, baseline)
+    device_motion = device_motion_compensator.compensate(_device_motion_state())
+    disturbance = disturbance_detector.detect(
+        observation,
+        baseline,
+        adaptive_baseline=adaptive_baseline_engine.adaptive_baseline,
+    )
+    baseline_update = _update_adaptive_baseline(
+        observation_payload,
+        disturbance.motion_score,
+        observation,
+        baseline,
+        device_motion,
+    )
     zone_estimate = fingerprint_mapper.estimate_zone(observation_payload)
     zone_map = tomography_engine.project(
         observation_payload,
@@ -102,10 +123,12 @@ def build_telemetry() -> Dict[str, Any]:
         quality_score=capabilities.quality_score,
         zone_score=zone_map.get(zone, 0.0),
     )
+    adjusted_confidence = raw_confidence * device_motion.confidence_multiplier
     confidence = confidence_engine.evaluate(
-        raw_confidence=raw_confidence,
+        raw_confidence=adjusted_confidence,
         mode=MODE_WIFI_ONLY_NON_CSI,
         signal_quality=capabilities.quality_score,
+        device_motion_status=device_motion.device_stability,
         map_ambiguity=_map_ambiguity(zone_map),
     )
 
@@ -127,6 +150,13 @@ def build_telemetry() -> Dict[str, Any]:
         ),
         map=zone_map,
     ).to_dict()
+    response["device_motion"] = {
+        "state": device_motion.device_stability,
+        "confidence_multiplier": device_motion.confidence_multiplier,
+        "scan_valid": device_motion.scan_valid,
+        "reason": device_motion.reason,
+    }
+    response["baseline"] = baseline_update
 
     if env_flag_enabled(AI_ANALYSIS_ENV):
         response["ai_analysis"] = build_ai_analysis(response)
@@ -232,6 +262,7 @@ def calibrate_empty_room() -> Dict[str, Any]:
         },
     }
     save_json(EMPTY_ROOM_BASELINE_FILE, baseline)
+    adaptive_status = adaptive_baseline_engine.replace_baseline(payload)
     return {
         "status": "calibrated",
         "baseline": {
@@ -239,6 +270,7 @@ def calibrate_empty_room() -> Dict[str, Any]:
             "sample_count": baseline["sample_count"],
             "visible_access_points": observation.bssid_count,
             "updated_at": baseline["updated_at"],
+            "adaptive_status": adaptive_status,
         },
         "limitations": LIMITATIONS,
         "notice": NOTICE,
@@ -286,7 +318,7 @@ def session_latest() -> Dict[str, Any]:
     with state_lock:
         telemetry = latest_telemetry
     return {
-        "session": session_learner.latest_session(),
+        "session": session_learner.latest_session() or empty_session_state(),
         "telemetry": telemetry,
         "notice": NOTICE,
     }
@@ -357,6 +389,44 @@ def _map_ambiguity(zone_map: Dict[str, float]) -> float:
     if len(scores) < 2 or scores[0] <= 0:
         return 0.0
     return round(max(0.0, min(1.0, 1.0 - (scores[0] - scores[1]))), 3)
+
+
+def _device_motion_state() -> str:
+    return os.getenv(DEVICE_MOTION_STATE_ENV, "stable")
+
+
+def _update_adaptive_baseline(
+    observation_payload: Dict[str, Any],
+    motion_score: float,
+    observation: Any,
+    baseline: Any,
+    device_motion: Any,
+) -> Dict[str, Any]:
+    if not isinstance(baseline, dict):
+        return {"baseline_status": "unavailable", "reason": "empty_room_baseline_not_calibrated"}
+    if getattr(device_motion, "device_stability", "unknown") != "stable":
+        return {
+            "baseline_status": "held",
+            "reason": "device_motion_not_stable",
+            "last_updated": adaptive_baseline_engine.last_updated,
+        }
+    return adaptive_baseline_engine.update(
+        observation_payload,
+        motion_score=motion_score,
+        scan_stability=float(getattr(observation, "scan_stability", 0.0)),
+        packet_loss=float(getattr(observation, "packet_loss", 1.0)),
+    )
+
+
+def empty_session_state() -> Dict[str, Any]:
+    return {
+        "session_id": None,
+        "active": False,
+        "started_at": None,
+        "stopped_at": None,
+        "scan_count": 0,
+        "latest_scan": None,
+    }
 
 
 def env_flag_enabled(name: str) -> bool:
