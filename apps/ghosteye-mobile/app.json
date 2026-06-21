@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Abraxas GhostEye",
+    "slug": "abraxas-ghosteye",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "ghosteye",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.abraxas.ghosteye"
+    },
+    "android": {
+      "package": "com.abraxas.ghosteye"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
