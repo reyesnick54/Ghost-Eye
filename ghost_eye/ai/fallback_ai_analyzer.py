@@ -33,13 +33,17 @@ class FallbackAIAnalyzer:
         motion_score = _as_float(telemetry.get("motion_score"), default=0.0)
         confidence = clamp_confidence(telemetry.get("confidence"), default=0.0)
         confidence_ceiling = min(0.65, clamp_confidence(telemetry.get("confidence_ceiling"), default=0.65))
+        source_type = self._source_type(telemetry)
         signal_quality = telemetry.get("signal_quality") if isinstance(telemetry.get("signal_quality"), Mapping) else {}
         zone_map = telemetry.get("map") if isinstance(telemetry.get("map"), Mapping) else {}
         baseline = telemetry.get("baseline") if isinstance(telemetry.get("baseline"), Mapping) else {}
         fingerprint_count = _as_int(_read_path(telemetry, ("fingerprints", "count")), default=0)
 
         risks = self._false_positive_risks(signal_quality, baseline, fingerprint_count)
+        if source_type == "simulated":
+            risks.append("simulated_source_not_live_wifi")
         observations = [
+            self._source_observation(source_type, telemetry),
             f"Motion score {motion_score:.2f} maps to {presence}.",
             self._zone_observation(zone, zone_map),
             f"Confidence is capped at {confidence_ceiling:.2f} for WiFi-only non-CSI telemetry.",
@@ -48,7 +52,7 @@ class FallbackAIAnalyzer:
             observations.append("Signal quality is weak or degraded; interpretation should be conservative.")
 
         next_action = self._recommend_next_action(baseline, fingerprint_count, signal_quality)
-        summary = self._summary(presence, motion_score, zone, confidence)
+        summary = self._summary(presence, motion_score, zone, confidence, source_type)
         explanation = (
             f"Analyzer confidence remains {confidence:.2f}, no higher than telemetry confidence "
             f"and the {confidence_ceiling:.2f} non-CSI ceiling. The result is probabilistic and "
@@ -86,16 +90,41 @@ class FallbackAIAnalyzer:
     __call__ = analyze
 
     @staticmethod
-    def _summary(presence: str, motion_score: float, zone: str, confidence: float) -> str:
+    def _summary(presence: str, motion_score: float, zone: str, confidence: float, source_type: str) -> str:
+        if source_type == "live":
+            source_prefix = "Live WiFi telemetry"
+        elif source_type == "simulated":
+            source_prefix = "Simulated WiFi telemetry"
+        else:
+            source_prefix = "Telemetry"
         zone_text = "an unknown zone" if zone == "unknown" else f"coarse {zone}"
         if presence == "clear":
-            return f"Telemetry is currently consistent with a clear environment at confidence {confidence:.2f}."
+            return f"{source_prefix} is currently consistent with a clear environment at confidence {confidence:.2f}."
         if presence == "unstable_scan":
-            return "The scan is unstable; signal quality should be improved before interpreting movement."
+            return f"{source_prefix} is unstable; signal quality should be improved before interpreting movement."
         return (
-            f"Telemetry shows {presence.replace('_', ' ')} with motion score {motion_score:.2f}; "
+            f"{source_prefix} shows {presence.replace('_', ' ')} with motion score {motion_score:.2f}; "
             f"the strongest coarse map response is {zone_text}."
         )
+
+    @staticmethod
+    def _source_type(telemetry: Mapping[str, Any]) -> str:
+        source = str(telemetry.get("source") or "").lower()
+        if source.endswith("_live") or "live" in source:
+            return "live"
+        return "simulated" if "simulated" in source else "unknown"
+
+    @staticmethod
+    def _source_observation(source_type: str, telemetry: Mapping[str, Any]) -> str:
+        source = str(telemetry.get("source") or "unknown")
+        if source_type == "live":
+            return f"Source is live local WiFi RSSI plus gateway latency ({source})."
+        if source_type == "simulated":
+            live_error = telemetry.get("live_error")
+            if live_error:
+                return f"Source is simulated fallback because live WiFi was unavailable: {live_error}."
+            return f"Source is simulated WiFi RSSI plus gateway latency ({source})."
+        return f"Source is {source}; interpretation remains bounded to WiFi-only non-CSI telemetry."
 
     @staticmethod
     def _zone_observation(zone: str, zone_map: Mapping[str, Any]) -> str:

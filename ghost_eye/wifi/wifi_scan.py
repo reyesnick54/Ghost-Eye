@@ -131,7 +131,7 @@ def collect_macos_wifi_scan() -> LiveWifiScan:
     errors: list[str] = []
     data: dict[str, Any] = {"platform": "macos"}
 
-    interface = _detect_macos_wifi_interface(errors)
+    interface = _detect_macos_wifi_interface(errors) or "en0"
     if interface:
         data["interface_name"] = interface
         networksetup = _run_command(("networksetup", "-getairportnetwork", interface), errors)
@@ -199,18 +199,12 @@ def parse_wifi_networks(rows: Iterable[WifiNetwork | Mapping[str, Any]]) -> list
 
 
 def infer_vendor_hint(ssid: str | None, bssid: str | None = None) -> str:
-    """Infer a coarse AP vendor hint from SSID text or common OUIs."""
+    """Infer the v0.3 demo vendor hint from SSID text."""
 
     text = (ssid or "").lower()
-    if "netgear" in text or text.startswith("orbi"):
+    if "netgear" in text:
         return "netgear"
-    if "tp-link" in text or "tplink" in text or "tp_link" in text or "deco" in text:
-        return "tp_link"
-
-    oui = (bssid or "").lower().replace("-", ":")[:8]
-    if oui in {"a0:40:a0", "20:4e:7f", "28:c6:8e", "9c:3d:cf"}:
-        return "netgear"
-    if oui in {"50:c7:bf", "f4:f2:6d", "18:d6:c7", "e8:48:b8"}:
+    if "tp-link" in text or "tplink" in text or "archer" in text or "deco" in text:
         return "tp_link"
     return "unknown"
 

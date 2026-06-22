@@ -62,18 +62,28 @@ class WiFiOnlyAdapter:
         self._last_source_id = SOURCE_LOCAL_WIFI_SIMULATED
         self._selected_wifi_ssid = getattr(self._simulator, "ssid", "GhostEye-Simulated")
         self._last_live_normalized: dict[str, Any] | None = None
+        self._last_live_error: str | None = None
 
     def get_live_observation(self) -> WiFiSignalObservation | None:
         """Return one live WiFi observation, or ``None`` when unavailable."""
 
         try:
             snapshot = self._live_collector.collect()
-        except Exception:
+        except Exception as exc:
+            self._last_live_error = f"live_collector:{exc.__class__.__name__}"
+            self._last_live_normalized = {
+                "available": False,
+                "ssid": "unknown",
+                "vendor_hint": "unknown",
+                "live_error": self._last_live_error,
+            }
             return None
 
         self._last_live_normalized = dict(snapshot.normalized)
         if not snapshot.normalized.get("available"):
+            self._last_live_error = str(snapshot.normalized.get("live_error") or "live_wifi_unavailable")
             return None
+        self._last_live_error = None
         self._selected_wifi_ssid = str(snapshot.normalized.get("ssid") or self._selected_wifi_ssid)
         return snapshot.observation
 
@@ -141,6 +151,11 @@ class WiFiOnlyAdapter:
 
         return self._last_source_id
 
+    def get_preferred_source_id(self) -> str:
+        """Return the configured source preference before live fallback."""
+
+        return self._selected_source_id
+
     def select_source(self, source_id: str) -> dict[str, Any]:
         """Select a configured source by ID."""
 
@@ -187,12 +202,36 @@ class WiFiOnlyAdapter:
 
         if self._last_live_normalized and self._last_live_normalized.get("available"):
             return True
-        return self._live_collector.available()
+        try:
+            snapshot = self._live_collector.collect()
+        except Exception as exc:
+            self._last_live_error = f"live_collector:{exc.__class__.__name__}"
+            self._last_live_normalized = {
+                "available": False,
+                "ssid": "unknown",
+                "vendor_hint": "unknown",
+                "live_error": self._last_live_error,
+            }
+            return False
+        self._last_live_normalized = dict(snapshot.normalized)
+        if self._last_live_normalized.get("available"):
+            self._last_live_error = None
+            return True
+        self._last_live_error = str(self._last_live_normalized.get("live_error") or "live_wifi_unavailable")
+        return False
 
     def get_live_status(self) -> dict[str, Any]:
         """Return the latest live normalized measurement if available."""
 
-        return dict(self._last_live_normalized or {})
+        status = dict(self._last_live_normalized or {})
+        if self._last_live_error and not status.get("live_error"):
+            status["live_error"] = self._last_live_error
+        return status
+
+    def get_live_error(self) -> str | None:
+        """Return the latest live-source failure reason, if any."""
+
+        return self._last_live_error
 
     def get_observation(self) -> WiFiSignalObservation:
         """Return one WiFi-only, non-CSI signal observation."""
