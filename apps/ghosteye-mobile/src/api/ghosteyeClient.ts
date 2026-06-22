@@ -3,8 +3,12 @@ import {
   CurrentMapResponse,
   GhostEyeScanTelemetry,
   HealthResponse,
+  RoomSetupRequest,
+  RoomSetupResponse,
   SessionResponse,
   SourcesResponse,
+  WifiNetworksResponse,
+  WifiSelectionResponse,
   ZoneId,
 } from "../types/telemetry";
 
@@ -62,6 +66,38 @@ export function getHealth(backendUrl: string): Promise<HealthResponse> {
 
 export function getSources(backendUrl: string): Promise<SourcesResponse> {
   return requestJson<SourcesResponse>(backendUrl, "/sources");
+}
+
+export function selectSource(backendUrl: string, sourceId: string): Promise<SourcesResponse> {
+  return requestJson<SourcesResponse>(backendUrl, "/source/select", {
+    method: "POST",
+    body: JSON.stringify({ source_id: sourceId }),
+  });
+}
+
+export function getWifiNetworks(backendUrl: string): Promise<WifiNetworksResponse> {
+  return requestJson<WifiNetworksResponse>(backendUrl, "/wifi/networks");
+}
+
+export function selectWifiNetwork(
+  backendUrl: string,
+  ssid: string,
+  adapterMode = "wifi_only_non_csi",
+): Promise<WifiSelectionResponse> {
+  return requestJson<WifiSelectionResponse>(backendUrl, "/wifi/select", {
+    method: "POST",
+    body: JSON.stringify({ ssid, adapter_mode: adapterMode }),
+  });
+}
+
+export function setupRoom(
+  backendUrl: string,
+  roomSetup: RoomSetupRequest,
+): Promise<RoomSetupResponse> {
+  return requestJson<RoomSetupResponse>(backendUrl, "/room/setup", {
+    method: "POST",
+    body: JSON.stringify(roomSetup),
+  });
 }
 
 export function getScan(backendUrl: string): Promise<GhostEyeScanTelemetry> {

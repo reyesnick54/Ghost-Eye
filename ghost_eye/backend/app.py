@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -21,9 +22,18 @@ from ghost_eye.api.schemas import (  # noqa: E402
     LIMITATIONS,
     MODE_WIFI_ONLY_NON_CSI,
     NOTICE,
+    ROOM_SETUP_LIMITATIONS,
     SOURCE_LOCAL_WIFI_SIMULATED,
+    SOURCE_SELECTED_WIFI_ENVIRONMENT,
     GhostEyeScanResponse,
+    RoomMap,
+    RoomSetupResponse,
+    SelectedNetwork,
     SignalQuality,
+    WIFI_NETWORK_LIMITATIONS,
+    WifiNetworkEnvironment,
+    WifiNetworksResponse,
+    WifiSelectionResponse,
     utc_now_iso,
 )
 from ghost_eye.csi_adapters import WiFiOnlyAdapter  # noqa: E402
@@ -55,6 +65,7 @@ LOG_DIR = SESSION_DIR / "logs"
 BASELINE_DIR = SESSION_DIR / "baselines"
 FINGERPRINT_DIR = SESSION_DIR / "fingerprints"
 EMPTY_ROOM_BASELINE_FILE = BASELINE_DIR / "empty_room.json"
+ROOM_SETUP_FILE = FINGERPRINT_DIR / "room_setup.json"
 AI_ANALYSIS_ENV = "GHOSTEYE_AI_ANALYSIS"
 DEVICE_MOTION_STATE_ENV = "GHOSTEYE_DEVICE_MOTION_STATE"
 AI_MODE = "analysis_only_no_autonomy"
@@ -69,6 +80,52 @@ AI_EXCLUDED_LAYERS = [
 
 for directory in (LOG_DIR, BASELINE_DIR, FINGERPRINT_DIR):
     directory.mkdir(parents=True, exist_ok=True)
+
+
+DEMO_WIFI_NETWORKS = (
+    WifiNetworkEnvironment(
+        ssid="TP-Link_Demo",
+        bssid_masked="aa:bb:**:**:**:11",
+        vendor_hint="tp_link",
+        signal_dbm=-48,
+        channel=6,
+        capability="wifi_only_environment",
+        can_use_as_csi_sensor=False,
+        notes="Usable as controlled access point/environment. Raw CSI not verified.",
+    ),
+    WifiNetworkEnvironment(
+        ssid="NetGear_Demo",
+        bssid_masked="cc:dd:**:**:**:22",
+        vendor_hint="netgear",
+        signal_dbm=-55,
+        channel=11,
+        capability="wifi_only_environment",
+        can_use_as_csi_sensor=False,
+        notes="Usable as controlled access point/environment. Raw CSI not verified.",
+    ),
+    WifiNetworkEnvironment(
+        ssid="GhostEye_Lab",
+        bssid_masked="02:00:**:**:**:33",
+        vendor_hint="unknown",
+        signal_dbm=-62,
+        channel=1,
+        capability="wifi_only_environment",
+        can_use_as_csi_sensor=False,
+        notes="Demo environment only. Ordinary phone WiFi APIs do not expose raw CSI.",
+    ),
+)
+
+DEFAULT_ROOM_SETUP = {
+    "room_id": "demo_room",
+    "room_name": "Demo Room",
+    "width_m": 5.2,
+    "length_m": 4.1,
+    "shape": "rectangle",
+    "zones": ["zone_a", "zone_b", "zone_c"],
+    "router_location": {"x_m": 0.5, "y_m": 2.0},
+    "map_mode": "manual_dimensions_plus_wifi_fingerprint",
+    "updated_at": None,
+}
 
 
 adapter = WiFiOnlyAdapter(seed=42, bssid_count=5)
@@ -86,13 +143,15 @@ device_motion_compensator = DeviceMotionCompensator()
 session_learner = SessionLearner(LOG_DIR)
 state_lock = Lock()
 latest_telemetry: Optional[Dict[str, Any]] = None
+selected_wifi_environment: Dict[str, Any] = DEMO_WIFI_NETWORKS[0].to_dict()
 
 
 def build_telemetry() -> Dict[str, Any]:
-    """Build one GhostEye WiFi-only non-CSI v0.2 scan payload."""
+    """Build one GhostEye WiFi-only non-CSI scan payload."""
 
     global latest_telemetry
 
+    selected_network = _selected_wifi_network()
     observation = adapter.get_observation()
     observation_payload = observation.to_dict()
     capabilities = capability_profiler.profile(observation)
@@ -117,6 +176,7 @@ def build_telemetry() -> Dict[str, Any]:
         zone_estimate.get("zone_scores", {}),
         disturbance.motion_score,
     )
+    room_map = _room_map(zone_map)
     zone = _selected_zone(zone_estimate.get("zone"), zone_map)
     raw_confidence = _raw_confidence(
         motion_score=disturbance.motion_score,
@@ -135,7 +195,11 @@ def build_telemetry() -> Dict[str, Any]:
     response = GhostEyeScanResponse(
         timestamp=utc_now_iso(),
         mode=MODE_WIFI_ONLY_NON_CSI,
-        source=SOURCE_LOCAL_WIFI_SIMULATED,
+        source=SOURCE_SELECTED_WIFI_ENVIRONMENT,
+        selected_network=SelectedNetwork(
+            ssid=str(selected_network["ssid"]),
+            vendor_hint=str(selected_network["vendor_hint"]),
+        ),
         presence=disturbance.presence,
         motion_score=disturbance.motion_score,
         zone=zone,
@@ -148,6 +212,13 @@ def build_telemetry() -> Dict[str, Any]:
             packet_loss=capabilities.packet_loss,
             rssi_stability=capabilities.rssi_stability,
         ),
+        room_map=RoomMap(
+            room_name=str(room_map["room_name"]),
+            shape=str(room_map["shape"]),
+            width_m=float(room_map["width_m"]),
+            length_m=float(room_map["length_m"]),
+            zones=room_map["zones"],
+        ),
         map=zone_map,
     ).to_dict()
     response["device_motion"] = {
@@ -157,6 +228,7 @@ def build_telemetry() -> Dict[str, Any]:
         "reason": device_motion.reason,
     }
     response["baseline"] = baseline_update
+    response["selected_adapter"] = _selected_source()
 
     if env_flag_enabled(AI_ANALYSIS_ENV):
         response["ai_analysis"] = build_ai_analysis(response)
@@ -179,6 +251,9 @@ def root() -> Dict[str, Any]:
             "/scan",
             "/sources",
             "/source/select",
+            "/wifi/networks",
+            "/wifi/select",
+            "/room/setup",
             "/map/current",
             "/calibrate/empty-room",
             "/calibrate/zone",
@@ -213,6 +288,69 @@ def sources() -> Dict[str, Any]:
     return {"sources": adapter.sources()}
 
 
+@app.get("/wifi/networks")
+def wifi_networks() -> Dict[str, Any]:
+    return WifiNetworksResponse(networks=DEMO_WIFI_NETWORKS).to_dict()
+
+
+@app.post("/wifi/select")
+def select_wifi(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    global selected_wifi_environment
+
+    ssid = str(payload.get("ssid") or "").strip()
+    adapter_mode = str(payload.get("adapter_mode") or MODE_WIFI_ONLY_NON_CSI).strip()
+    if not ssid:
+        raise HTTPException(status_code=400, detail="ssid is required")
+    if adapter_mode != MODE_WIFI_ONLY_NON_CSI:
+        raise HTTPException(status_code=400, detail="adapter_mode must be wifi_only_non_csi")
+
+    network = _network_by_ssid(ssid)
+    if network is None:
+        raise HTTPException(status_code=404, detail=f"Unknown WiFi environment: {ssid}")
+
+    selected_wifi_environment = network.to_dict()
+    adapter.select_wifi_environment(ssid)
+    return WifiSelectionResponse(
+        selected_ssid=ssid,
+        adapter_mode=adapter_mode,
+        confidence_ceiling=confidence_engine.DEFAULT_MODE_CEILINGS[MODE_WIFI_ONLY_NON_CSI],
+    ).to_dict()
+
+
+@app.post("/room/setup")
+def setup_room(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    room_name = str(payload.get("room_name") or "").strip() or "Demo Room"
+    width_m = _positive_float(payload.get("width_m"), "width_m")
+    length_m = _positive_float(payload.get("length_m"), "length_m")
+    shape = str(payload.get("shape") or "rectangle").strip().lower() or "rectangle"
+    zones = _normalize_zones(payload.get("zones"))
+    router_location = payload.get("router_location") if isinstance(payload.get("router_location"), dict) else {}
+    router_x = _finite_float(router_location.get("x_m"), "router_location.x_m")
+    router_y = _finite_float(router_location.get("y_m"), "router_location.y_m")
+    room_id = _slug(room_name)
+
+    room_setup = {
+        "room_id": room_id,
+        "room_name": room_name,
+        "width_m": width_m,
+        "length_m": length_m,
+        "shape": shape,
+        "zones": zones,
+        "router_location": {"x_m": router_x, "y_m": router_y},
+        "map_mode": "manual_dimensions_plus_wifi_fingerprint",
+        "updated_at": utc_now_iso(),
+        "limitations": ROOM_SETUP_LIMITATIONS,
+        "notice": NOTICE,
+    }
+    save_json(ROOM_SETUP_FILE, room_setup)
+
+    return RoomSetupResponse(
+        room_id=room_id,
+        status="configured",
+        map_mode="manual_dimensions_plus_wifi_fingerprint",
+    ).to_dict()
+
+
 @app.post("/source/select")
 def select_source(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     source_id = payload.get("source_id") or payload.get("id")
@@ -234,6 +372,7 @@ def current_map() -> Dict[str, Any]:
     return {
         "timestamp": telemetry["timestamp"],
         "zone": telemetry["zone"],
+        "room_map": telemetry["room_map"],
         "map": telemetry["map"],
         "signal_quality": telemetry["signal_quality"],
         "limitations": LIMITATIONS,
@@ -249,7 +388,8 @@ def calibrate_empty_room() -> Dict[str, Any]:
         "created_at": utc_now_iso(),
         "updated_at": utc_now_iso(),
         "mode": MODE_WIFI_ONLY_NON_CSI,
-        "source": SOURCE_LOCAL_WIFI_SIMULATED,
+        "source": SOURCE_SELECTED_WIFI_ENVIRONMENT,
+        "selected_network": _selected_wifi_network(),
         "sample_count": 1,
         "rssi_by_bssid": observation.rssi_by_bssid,
         "observation": payload,
@@ -372,6 +512,37 @@ def _selected_source() -> Optional[Dict[str, Any]]:
     return next((source for source in adapter.sources() if source.get("selected")), None)
 
 
+def _selected_wifi_network() -> Dict[str, Any]:
+    return dict(selected_wifi_environment)
+
+
+def _network_by_ssid(ssid: str) -> Optional[WifiNetworkEnvironment]:
+    return next((network for network in DEMO_WIFI_NETWORKS if network.ssid == ssid), None)
+
+
+def _room_setup() -> Dict[str, Any]:
+    setup = load_json(ROOM_SETUP_FILE, None)
+    if not isinstance(setup, dict):
+        return dict(DEFAULT_ROOM_SETUP)
+    merged = dict(DEFAULT_ROOM_SETUP)
+    merged.update(setup)
+    merged["zones"] = _normalize_zones(merged.get("zones"))
+    return merged
+
+
+def _room_map(zone_map: Dict[str, float]) -> Dict[str, Any]:
+    setup = _room_setup()
+    zones = setup["zones"]
+    scored_zones = {zone: round(float(zone_map.get(zone, 0.0)), 2) for zone in zones}
+    return {
+        "room_name": setup["room_name"],
+        "shape": setup["shape"],
+        "width_m": float(setup["width_m"]),
+        "length_m": float(setup["length_m"]),
+        "zones": scored_zones,
+    }
+
+
 def _selected_zone(zone_hint: Any, zone_map: Dict[str, float]) -> str:
     if isinstance(zone_hint, str) and zone_hint in zone_map and zone_hint != "unknown":
         return zone_hint
@@ -393,6 +564,45 @@ def _map_ambiguity(zone_map: Dict[str, float]) -> float:
 
 def _device_motion_state() -> str:
     return os.getenv(DEVICE_MOTION_STATE_ENV, "stable")
+
+
+def _normalize_zones(value: Any) -> list[str]:
+    if isinstance(value, str):
+        candidates = value.split(",")
+    elif isinstance(value, list):
+        candidates = value
+    else:
+        candidates = DEFAULT_ROOM_SETUP["zones"]
+    zones: list[str] = []
+    for candidate in candidates:
+        zone = str(candidate).strip()
+        if zone and zone not in zones:
+            zones.append(zone)
+    if not zones:
+        zones = list(DEFAULT_ROOM_SETUP["zones"])
+    return zones
+
+
+def _positive_float(value: Any, field_name: str) -> float:
+    number = _finite_float(value, field_name)
+    if number <= 0:
+        raise HTTPException(status_code=400, detail=f"{field_name} must be greater than 0")
+    return number
+
+
+def _finite_float(value: Any, field_name: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"{field_name} must be a number") from exc
+    if not number == number or number in (float("inf"), float("-inf")):
+        raise HTTPException(status_code=400, detail=f"{field_name} must be finite")
+    return round(number, 3)
+
+
+def _slug(value: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9_.-]+", "_", value.strip().lower()).strip("._-")
+    return slug or "room"
 
 
 def _update_adaptive_baseline(

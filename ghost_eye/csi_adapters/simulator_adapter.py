@@ -134,6 +134,13 @@ class WiFiSignalSimulatorAdapter:
             mode=self.mode,
         )
 
+    def select_environment(self, ssid: str) -> None:
+        """Label subsequent simulated observations with the selected WiFi SSID."""
+
+        selected_ssid = str(ssid).strip()
+        if selected_ssid:
+            self.ssid = selected_ssid
+
     def _build_access_points(self, bssid_count: int) -> Tuple[SimulatedAccessPoint, ...]:
         channels = ((1, 2412), (6, 2437), (11, 2462), (36, 5180), (149, 5745), (153, 5765))
         access_points = []

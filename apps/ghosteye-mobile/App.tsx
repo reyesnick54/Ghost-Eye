@@ -13,12 +13,24 @@ import { BackendConnectionScreen } from "./src/screens/BackendConnectionScreen";
 import { CalibrationScreen } from "./src/screens/CalibrationScreen";
 import { LiveScanDashboard } from "./src/screens/LiveScanDashboard";
 import { OnboardingSafetyScreen } from "./src/screens/OnboardingSafetyScreen";
+import { RoomMapScreen } from "./src/screens/RoomMapScreen";
+import { RoomSetupScreen } from "./src/screens/RoomSetupScreen";
 import { SessionScreen } from "./src/screens/SessionScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { SourceSelectionScreen } from "./src/screens/SourceSelectionScreen";
+import { WifiNetworkSelectionScreen } from "./src/screens/WifiNetworkSelectionScreen";
 import { ConnectionState } from "./src/types/telemetry";
 
-type ScreenKey = "connection" | "sources" | "calibration" | "dashboard" | "session" | "settings";
+type ScreenKey =
+  | "connection"
+  | "wifi"
+  | "sources"
+  | "roomSetup"
+  | "calibration"
+  | "dashboard"
+  | "roomMap"
+  | "session"
+  | "settings";
 
 interface ScreenDefinition {
   key: ScreenKey;
@@ -30,11 +42,14 @@ const DEFAULT_REFRESH_INTERVAL_MS = 2000;
 
 const SCREENS: ScreenDefinition[] = [
   { key: "connection", label: "Connect" },
-  { key: "sources", label: "Sources" },
+  { key: "wifi", label: "WiFi" },
+  { key: "sources", label: "Adapters" },
+  { key: "roomSetup", label: "Room" },
   { key: "calibration", label: "Calibrate" },
   { key: "dashboard", label: "Live" },
-  { key: "session", label: "Session" },
-  { key: "settings", label: "Settings" },
+  { key: "roomMap", label: "Map" },
+  { key: "session", label: "Logs" },
+  { key: "settings", label: "Diagnostics" },
 ];
 
 export default function App() {
@@ -65,8 +80,12 @@ export default function App() {
             onConnectionStateChange={setConnectionState}
           />
         );
+      case "wifi":
+        return <WifiNetworkSelectionScreen backendUrl={backendUrl} />;
       case "sources":
         return <SourceSelectionScreen backendUrl={backendUrl} />;
+      case "roomSetup":
+        return <RoomSetupScreen backendUrl={backendUrl} />;
       case "calibration":
         return <CalibrationScreen backendUrl={backendUrl} />;
       case "dashboard":
@@ -75,6 +94,8 @@ export default function App() {
         );
       case "session":
         return <SessionScreen backendUrl={backendUrl} />;
+      case "roomMap":
+        return <RoomMapScreen backendUrl={backendUrl} />;
       case "settings":
         return (
           <SettingsScreen

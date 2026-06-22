@@ -47,8 +47,8 @@ export function SessionScreen({ backendUrl }: SessionScreenProps) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.kicker}>Session learner</Text>
-        <Text style={styles.title}>Capture scan session state</Text>
+        <Text style={styles.kicker}>Session logs</Text>
+        <Text style={styles.title}>Capture and review scan sessions</Text>
         <Text style={styles.copy}>
           Start and stop backend sessions while the live scanner appends probabilistic
           WiFi-only non-CSI observations.
@@ -107,6 +107,18 @@ export function SessionScreen({ backendUrl }: SessionScreenProps) {
         <Text style={styles.detailText}>started_at: {session?.started_at ?? "none"}</Text>
         <Text style={styles.detailText}>stopped_at: {session?.stopped_at ?? "none"}</Text>
       </View>
+
+      {session?.latest_scan ? (
+        <View style={styles.detailCard}>
+          <Text style={styles.detailTitle}>Latest scan summary</Text>
+          <Text style={styles.detailText}>timestamp: {session.latest_scan.timestamp ?? "unknown"}</Text>
+          <Text style={styles.detailText}>selected_wifi: {session.latest_scan.selected_network?.ssid ?? "none"}</Text>
+          <Text style={styles.detailText}>presence: {session.latest_scan.presence ?? "unknown"}</Text>
+          <Text style={styles.detailText}>zone: {session.latest_scan.zone ?? "unknown"}</Text>
+          <Text style={styles.detailText}>confidence: {session.latest_scan.confidence ?? "unknown"}</Text>
+          <Text style={styles.detailText}>ceiling: {session.latest_scan.confidence_ceiling ?? "unknown"}</Text>
+        </View>
+      ) : null}
 
       {notice ? <Text style={styles.notice}>{notice}</Text> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}

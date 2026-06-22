@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { getSources } from "../api/ghosteyeClient";
+import { getSources, selectSource } from "../api/ghosteyeClient";
 import { StatusCard } from "../components/StatusCard";
 import { GhostEyeSource } from "../types/telemetry";
 
@@ -12,6 +12,7 @@ interface SourceSelectionScreenProps {
 export function SourceSelectionScreen({ backendUrl }: SourceSelectionScreenProps) {
   const [sources, setSources] = useState<GhostEyeSource[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectingSourceId, setSelectingSourceId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadSources = useCallback(async () => {
@@ -31,6 +32,19 @@ export function SourceSelectionScreen({ backendUrl }: SourceSelectionScreenProps
     void loadSources();
   }, [loadSources]);
 
+  async function handleSelectSource(sourceId: string) {
+    setSelectingSourceId(sourceId);
+    setError(null);
+    try {
+      const payload = await selectSource(backendUrl, sourceId);
+      setSources(payload.sources ?? []);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Unable to select source.");
+    } finally {
+      setSelectingSourceId(null);
+    }
+  }
+
   const selectedSource =
     sources.find((source) => source.selected) ??
     sources.find((source) => source.id === "local_wifi_rssi_latency_simulated");
@@ -39,7 +53,7 @@ export function SourceSelectionScreen({ backendUrl }: SourceSelectionScreenProps
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.kicker}>Signal source</Text>
-        <Text style={styles.title}>WiFi RSSI + latency input</Text>
+        <Text style={styles.title}>Source adapter selection</Text>
         <Text style={styles.copy}>
           The mobile app displays backend telemetry only. It does not attempt raw WiFi CSI
           access from phone APIs.
@@ -95,11 +109,26 @@ export function SourceSelectionScreen({ backendUrl }: SourceSelectionScreenProps
               <Text style={styles.sourceMeta}>Type: {source.type ?? "unknown"}</Text>
               <Text style={styles.sourceMeta}>Simulated: {String(source.simulated ?? false)}</Text>
               <Text style={styles.sourceMeta}>CSI: {String(source.csi ?? "unknown")}</Text>
+              <Text style={styles.sourceMeta}>Selected WiFi: {source.selected_wifi_ssid ?? "none"}</Text>
               {source.capabilities?.length ? (
                 <Text style={styles.capabilities}>
                   Capabilities: {source.capabilities.join(", ")}
                 </Text>
               ) : null}
+              {source.limitations ? <Text style={styles.capabilities}>{source.limitations}</Text> : null}
+              <Pressable
+                disabled={Boolean(selectingSourceId)}
+                onPress={() => handleSelectSource(source.id)}
+                style={({ pressed }) => [
+                  styles.selectButton,
+                  selectingSourceId === source.id && styles.secondaryButtonDisabled,
+                  pressed && styles.secondaryButtonPressed,
+                ]}
+              >
+                <Text style={styles.selectButtonText}>
+                  {selectingSourceId === source.id ? "Selecting..." : "Select adapter"}
+                </Text>
+              </Pressable>
             </View>
           );
         })}
@@ -224,5 +253,18 @@ const styles = StyleSheet.create({
     color: "#94a3b8",
     fontSize: 12,
     lineHeight: 18,
+  },
+  selectButton: {
+    alignItems: "center",
+    borderColor: "#22c55e",
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 6,
+    paddingVertical: 12,
+  },
+  selectButtonText: {
+    color: "#bbf7d0",
+    fontSize: 13,
+    fontWeight: "900",
   },
 });
