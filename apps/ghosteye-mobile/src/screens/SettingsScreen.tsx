@@ -30,7 +30,7 @@ export function SettingsScreen({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.kicker}>Settings</Text>
+        <Text style={styles.kicker}>Settings / diagnostics</Text>
         <Text style={styles.title}>Mobile console configuration</Text>
         <Text style={styles.copy}>
           Settings are held in local React state for this v0.1 scaffold. Restarting the app

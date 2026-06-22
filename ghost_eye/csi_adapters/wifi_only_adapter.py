@@ -50,6 +50,7 @@ class WiFiOnlyAdapter:
         self._scanner = scanner
         self._simulator = simulator or WiFiSignalSimulatorAdapter(**simulator_kwargs)
         self._selected_source_id = "local_wifi_rssi_latency_simulated"
+        self._selected_wifi_ssid = getattr(self._simulator, "ssid", "GhostEye-Simulated")
 
     def sources(self) -> list[dict[str, Any]]:
         """Return available sources for the API."""
@@ -64,6 +65,9 @@ class WiFiOnlyAdapter:
                 "selected": self._selected_source_id == "local_wifi_rssi_latency_simulated",
                 "capabilities": ["rssi_scan", "gateway_latency", "jitter", "packet_loss"],
                 "csi": False,
+                "can_use_as_csi_sensor": False,
+                "selected_wifi_ssid": self._selected_wifi_ssid,
+                "limitations": "Ordinary WiFi APIs do not provide raw CSI in this mode.",
                 "status": "available",
             }
         ]
@@ -76,6 +80,22 @@ class WiFiOnlyAdapter:
                 self._selected_source_id = source_id
                 return {**source, "selected": True}
         raise ValueError(f"Unknown source: {source_id}")
+
+    def select_wifi_environment(self, ssid: str) -> dict[str, Any]:
+        """Set the selected WiFi environment label without enabling CSI capture."""
+
+        selected_ssid = str(ssid).strip()
+        if not selected_ssid:
+            raise ValueError("ssid must not be empty")
+        self._selected_wifi_ssid = selected_ssid
+        if hasattr(self._simulator, "select_environment"):
+            self._simulator.select_environment(selected_ssid)
+        return {
+            "ssid": selected_ssid,
+            "mode": self.mode,
+            "csi": False,
+            "can_use_as_csi_sensor": False,
+        }
 
     def get_observation(self) -> WiFiSignalObservation:
         """Return one WiFi-only, non-CSI signal observation."""

@@ -67,7 +67,9 @@ export function LiveScanDashboard({ backendUrl, refreshIntervalMs }: LiveScanDas
   }, [loadScan, refreshIntervalMs]);
 
   const quality = telemetry?.signal_quality;
-  const zoneMap = telemetry?.map ?? {};
+  const zoneMap = telemetry?.room_map?.zones ?? telemetry?.map ?? {};
+  const selectedNetwork = telemetry?.selected_network;
+  const selectedAdapter = telemetry?.selected_adapter;
 
   return (
     <View style={styles.container}>
@@ -89,6 +91,17 @@ export function LiveScanDashboard({ backendUrl, refreshIntervalMs }: LiveScanDas
       </View>
 
       <View style={styles.statusGrid}>
+        <StatusCard
+          label="Selected WiFi"
+          value={selectedNetwork?.ssid ?? "none"}
+          detail={selectedNetwork?.vendor_hint ? `vendor hint: ${selectedNetwork.vendor_hint}` : undefined}
+        />
+        <StatusCard
+          label="Selected adapter"
+          value={selectedAdapter?.id ?? telemetry?.mode ?? "unknown"}
+          detail={selectedAdapter?.csi === false ? "CSI capture is not enabled." : undefined}
+          tone={selectedAdapter?.csi === false ? "good" : "warn"}
+        />
         <StatusCard label="Presence" value={telemetry?.presence} tone="neutral" />
         <StatusCard label="Motion score" value={formatNumber(telemetry?.motion_score)} />
         <StatusCard label="Zone" value={telemetry?.zone} tone="good" />
@@ -110,7 +123,22 @@ export function LiveScanDashboard({ backendUrl, refreshIntervalMs }: LiveScanDas
               : undefined
           }
         />
+        <StatusCard
+          label="Packet loss"
+          value={quality ? formatPercent(quality.packet_loss) : "unavailable"}
+          detail={quality ? `RSSI stability ${formatPercent(quality.rssi_stability)}` : undefined}
+        />
       </View>
+
+      {telemetry?.room_map ? (
+        <View style={styles.roomCard}>
+          <Text style={styles.sectionTitle}>{telemetry.room_map.room_name ?? "Configured room"}</Text>
+          <Text style={styles.roomText}>
+            {telemetry.room_map.shape ?? "shape unknown"} | {formatNumber(telemetry.room_map.width_m, 1)}m x{" "}
+            {formatNumber(telemetry.room_map.length_m, 1)}m
+          </Text>
+        </View>
+      ) : null}
 
       <ZoneMap selectedZone={telemetry?.zone} zoneMap={zoneMap} />
 
@@ -208,6 +236,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#0f172a",
     gap: 8,
     padding: 14,
+  },
+  roomCard: {
+    borderColor: "#1f3b4d",
+    borderRadius: 16,
+    borderWidth: 1,
+    backgroundColor: "#0f172a",
+    gap: 6,
+    padding: 14,
+  },
+  roomText: {
+    color: "#cbd5e1",
+    fontSize: 13,
+    lineHeight: 19,
   },
   sectionTitle: {
     color: "#f8fafc",
