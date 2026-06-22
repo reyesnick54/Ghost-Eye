@@ -102,7 +102,7 @@ class RoomFingerprintMapper:
         return FingerprintMatch(label=zone, distance=1.0 - confidence, confidence=confidence)
 
     def fingerprint_count(self) -> int:
-        return len(list(self.fingerprint_dir.glob("*.json")))
+        return len([item for item in self._load_fingerprints(None) if item.get("zone")])
 
     def _write_fingerprint(self, fingerprint: Mapping[str, Any]) -> Path:
         path = self.fingerprint_dir / f"{self._slug(str(fingerprint['zone']))}.json"
@@ -116,7 +116,14 @@ class RoomFingerprintMapper:
         source: Optional[Mapping[str, Mapping[str, Any]] | Iterable[Mapping[str, Any]] | str | Path],
     ) -> list[Mapping[str, Any]]:
         if source is None:
-            return [self._read_json(path) for path in sorted(self.fingerprint_dir.glob("*.json")) if path.is_file()]
+            fingerprints = []
+            for path in sorted(self.fingerprint_dir.glob("*.json")):
+                if not path.is_file():
+                    continue
+                payload = self._read_json(path)
+                if isinstance(payload, Mapping) and payload.get("zone") and isinstance(payload.get("rssi_by_bssid"), Mapping):
+                    fingerprints.append(payload)
+            return fingerprints
         if isinstance(source, (str, Path)):
             path = Path(source)
             if path.is_dir():
