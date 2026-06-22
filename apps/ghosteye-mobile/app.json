@@ -11,10 +11,23 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.abraxas.ghosteye"
+      "bundleIdentifier": "com.abraxas.ghosteye",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "GhostEye uses location-gated WiFi network metadata only for authorized owned-router observation sessions.",
+        "NSMotionUsageDescription": "GhostEye uses device motion to classify whether the phone is stable during authorized WiFi observation sessions.",
+        "NSLocalNetworkUsageDescription": "GhostEye can probe an authorized owned router on the local network when configured by the user."
+      }
     },
     "android": {
-      "package": "com.abraxas.ghosteye"
+      "package": "com.abraxas.ghosteye",
+      "permissions": [
+        "android.permission.ACCESS_WIFI_STATE",
+        "android.permission.CHANGE_WIFI_STATE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.NEARBY_WIFI_DEVICES",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE"
+      ]
     },
     "web": {
       "bundler": "metro"

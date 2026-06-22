@@ -6,15 +6,23 @@ import { SafetyNotice } from "../components/SafetyNotice";
 interface SettingsScreenProps {
   backendUrl: string;
   refreshIntervalMs: number;
+  routerProbeHost?: string | null;
+  teamId?: string | null;
   onBackendUrlChange: (url: string) => void;
   onRefreshIntervalChange: (milliseconds: number) => void;
+  onRouterProbeHostChange: (host: string) => void;
+  onTeamIdChange: (teamId: string) => void;
 }
 
 export function SettingsScreen({
   backendUrl,
   refreshIntervalMs,
+  routerProbeHost,
+  teamId,
   onBackendUrlChange,
   onRefreshIntervalChange,
+  onRouterProbeHostChange,
+  onTeamIdChange,
 }: SettingsScreenProps) {
   const [intervalSeconds, setIntervalSeconds] = useState(String(refreshIntervalMs / 1000));
   const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(false);
@@ -22,7 +30,7 @@ export function SettingsScreen({
   function handleIntervalChange(value: string) {
     setIntervalSeconds(value);
     const parsed = Number(value);
-    if (Number.isFinite(parsed) && parsed >= 1) {
+    if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 5) {
       onRefreshIntervalChange(Math.round(parsed * 1000));
     }
   }
@@ -33,8 +41,8 @@ export function SettingsScreen({
         <Text style={styles.kicker}>Settings / diagnostics</Text>
         <Text style={styles.title}>Mobile console configuration</Text>
         <Text style={styles.copy}>
-          Settings are held in local React state for this v0.1 scaffold. Restarting the app
-          resets them to defaults.
+          Settings are held in local React state for this v0.5 mobile observation layer.
+          Restarting the app resets them to defaults.
         </Text>
       </View>
 
@@ -50,11 +58,13 @@ export function SettingsScreen({
           style={styles.input}
           value={backendUrl}
         />
-        <Text style={styles.helper}>Physical devices usually need a LAN URL such as http://192.168.1.100:8000.</Text>
+        <Text style={styles.helper}>
+          Use the hosted GhostEye Cloud API URL. Local development can still use a LAN URL.
+        </Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.label}>Scan refresh interval</Text>
+        <Text style={styles.label}>Observation stream interval</Text>
         <TextInput
           keyboardType="numeric"
           onChangeText={handleIntervalChange}
@@ -63,7 +73,42 @@ export function SettingsScreen({
           style={styles.input}
           value={intervalSeconds}
         />
-        <Text style={styles.helper}>Seconds between dashboard `/scan` polls. Minimum accepted value is 1 second.</Text>
+        <Text style={styles.helper}>
+          Seconds between uploads. Android can use 1-5 seconds; iOS reduced mode is capped by
+          capability and normally uses 5 seconds.
+        </Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.label}>Router probe host</Text>
+        <TextInput
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          onChangeText={onRouterProbeHostChange}
+          placeholder="192.168.1.1 or http://192.168.1.1"
+          placeholderTextColor="#64748b"
+          style={styles.input}
+          value={routerProbeHost ?? ""}
+        />
+        <Text style={styles.helper}>
+          Optional owned-router IP/URL for app-level latency probing. Leave blank to skip router
+          probe latency.
+        </Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.label}>Team ID</Text>
+        <TextInput
+          autoCapitalize="none"
+          autoCorrect={false}
+          onChangeText={onTeamIdChange}
+          placeholder="optional-team-id"
+          placeholderTextColor="#64748b"
+          style={styles.input}
+          value={teamId ?? ""}
+        />
+        <Text style={styles.helper}>Optional metadata attached to MobileWifiObservation uploads.</Text>
       </View>
 
       <View style={styles.card}>

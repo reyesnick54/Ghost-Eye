@@ -11,15 +11,15 @@ import {
 
 import { BackendConnectionScreen } from "./src/screens/BackendConnectionScreen";
 import { CalibrationScreen } from "./src/screens/CalibrationScreen";
-import { LiveScanDashboard } from "./src/screens/LiveScanDashboard";
+import { LiveScanScreen } from "./src/screens/LiveScanScreen";
 import { OnboardingSafetyScreen } from "./src/screens/OnboardingSafetyScreen";
+import { RouterSelectionScreen } from "./src/screens/RouterSelectionScreen";
 import { RoomMapScreen } from "./src/screens/RoomMapScreen";
 import { RoomSetupScreen } from "./src/screens/RoomSetupScreen";
 import { SessionScreen } from "./src/screens/SessionScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { SourceSelectionScreen } from "./src/screens/SourceSelectionScreen";
-import { WifiNetworkSelectionScreen } from "./src/screens/WifiNetworkSelectionScreen";
-import { ConnectionState } from "./src/types/telemetry";
+import { ConnectionState, SelectedNetworkObservation } from "./src/types/telemetry";
 
 type ScreenKey =
   | "connection"
@@ -37,12 +37,12 @@ interface ScreenDefinition {
   label: string;
 }
 
-const DEFAULT_BACKEND_URL = "http://localhost:8000";
+const DEFAULT_BACKEND_URL = "https://api.ghosteye.cloud";
 const DEFAULT_REFRESH_INTERVAL_MS = 2000;
 
 const SCREENS: ScreenDefinition[] = [
   { key: "connection", label: "Connect" },
-  { key: "wifi", label: "WiFi" },
+  { key: "wifi", label: "Router" },
   { key: "sources", label: "Adapters" },
   { key: "roomSetup", label: "Room" },
   { key: "calibration", label: "Calibrate" },
@@ -58,6 +58,9 @@ export default function App() {
   const [backendUrl, setBackendUrl] = useState(DEFAULT_BACKEND_URL);
   const [connectionState, setConnectionState] = useState<ConnectionState>("idle");
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(DEFAULT_REFRESH_INTERVAL_MS);
+  const [selectedNetwork, setSelectedNetwork] = useState<SelectedNetworkObservation | null>(null);
+  const [routerProbeHost, setRouterProbeHost] = useState("");
+  const [teamId, setTeamId] = useState("");
 
   const activeTitle = useMemo(
     () => SCREENS.find((screen) => screen.key === activeScreen)?.label ?? "GhostEye",
@@ -81,16 +84,34 @@ export default function App() {
           />
         );
       case "wifi":
-        return <WifiNetworkSelectionScreen backendUrl={backendUrl} />;
+        return (
+          <RouterSelectionScreen
+            selectedNetwork={selectedNetwork}
+            onSelectedNetworkChange={setSelectedNetwork}
+          />
+        );
       case "sources":
         return <SourceSelectionScreen backendUrl={backendUrl} />;
       case "roomSetup":
         return <RoomSetupScreen backendUrl={backendUrl} />;
       case "calibration":
-        return <CalibrationScreen backendUrl={backendUrl} />;
+        return (
+          <CalibrationScreen
+            backendUrl={backendUrl}
+            selectedNetwork={selectedNetwork}
+            routerProbeHost={routerProbeHost}
+            teamId={teamId}
+          />
+        );
       case "dashboard":
         return (
-          <LiveScanDashboard backendUrl={backendUrl} refreshIntervalMs={refreshIntervalMs} />
+          <LiveScanScreen
+            backendUrl={backendUrl}
+            refreshIntervalMs={refreshIntervalMs}
+            selectedNetwork={selectedNetwork}
+            routerProbeHost={routerProbeHost}
+            teamId={teamId}
+          />
         );
       case "session":
         return <SessionScreen backendUrl={backendUrl} />;
@@ -101,8 +122,12 @@ export default function App() {
           <SettingsScreen
             backendUrl={backendUrl}
             refreshIntervalMs={refreshIntervalMs}
+            routerProbeHost={routerProbeHost}
+            teamId={teamId}
             onBackendUrlChange={handleBackendUrlChange}
             onRefreshIntervalChange={setRefreshIntervalMs}
+            onRouterProbeHostChange={setRouterProbeHost}
+            onTeamIdChange={setTeamId}
           />
         );
       default:
