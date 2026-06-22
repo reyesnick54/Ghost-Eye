@@ -23,6 +23,7 @@ from ghost_eye.api.schemas import (  # noqa: E402
     MODE_WIFI_ONLY_NON_CSI,
     NOTICE,
     ROOM_SETUP_LIMITATIONS,
+    SOURCE_LOCAL_WIFI_LIVE,
     SOURCE_LOCAL_WIFI_SIMULATED,
     SOURCE_SELECTED_WIFI_ENVIRONMENT,
     GhostEyeScanResponse,
@@ -36,6 +37,7 @@ from ghost_eye.api.schemas import (  # noqa: E402
     WifiSelectionResponse,
     utc_now_iso,
 )
+from ghost_eye.ai import FallbackAIAnalyzer  # noqa: E402
 from ghost_eye.csi_adapters import WiFiOnlyAdapter  # noqa: E402
 from ghost_eye.inference import (  # noqa: E402
     AdaptiveBaselineEngine,
@@ -129,6 +131,7 @@ DEFAULT_ROOM_SETUP = {
 
 
 adapter = WiFiOnlyAdapter(seed=42, bssid_count=5)
+ai_analyzer = FallbackAIAnalyzer()
 capability_profiler = SignalCapabilityProfiler()
 disturbance_detector = DisturbanceFieldDetector()
 adaptive_baseline_engine = AdaptiveBaselineEngine(
@@ -151,9 +154,11 @@ def build_telemetry() -> Dict[str, Any]:
 
     global latest_telemetry
 
-    selected_network = _selected_wifi_network()
     observation = adapter.get_observation()
     observation_payload = observation.to_dict()
+    live_status = adapter.get_live_status()
+    selected_network = _selected_wifi_network(observation_payload, live_status)
+    actual_source = adapter.get_selected_source_id()
     capabilities = capability_profiler.profile(observation)
     baseline = load_json(EMPTY_ROOM_BASELINE_FILE, None)
     device_motion = device_motion_compensator.compensate(_device_motion_state())
@@ -191,16 +196,18 @@ def build_telemetry() -> Dict[str, Any]:
         device_motion_status=device_motion.device_stability,
         map_ambiguity=_map_ambiguity(zone_map),
     )
+    presence = _bounded_presence(disturbance.presence, capabilities.quality_score, observation.packet_loss)
 
     response = GhostEyeScanResponse(
         timestamp=utc_now_iso(),
         mode=MODE_WIFI_ONLY_NON_CSI,
-        source=SOURCE_SELECTED_WIFI_ENVIRONMENT,
+        source=actual_source,
         selected_network=SelectedNetwork(
             ssid=str(selected_network["ssid"]),
             vendor_hint=str(selected_network["vendor_hint"]),
+            bssid_masked=selected_network.get("bssid_masked"),
         ),
-        presence=disturbance.presence,
+        presence=presence,
         motion_score=disturbance.motion_score,
         zone=zone,
         confidence=float(confidence["final_confidence"]),
@@ -211,6 +218,8 @@ def build_telemetry() -> Dict[str, Any]:
             jitter_ms=capabilities.jitter_ms,
             packet_loss=capabilities.packet_loss,
             rssi_stability=capabilities.rssi_stability,
+            rssi_dbm=_optional_signal_float(live_status.get("rssi_dbm"), observation.mean_rssi),
+            noise_dbm=_optional_signal_float(live_status.get("noise_dbm"), None),
         ),
         room_map=RoomMap(
             room_name=str(room_map["room_name"]),
@@ -228,10 +237,10 @@ def build_telemetry() -> Dict[str, Any]:
         "reason": device_motion.reason,
     }
     response["baseline"] = baseline_update
-    response["selected_adapter"] = _selected_source()
-
-    if env_flag_enabled(AI_ANALYSIS_ENV):
-        response["ai_analysis"] = build_ai_analysis(response)
+    response["selected_adapter"] = adapter.get_selected_source()
+    response["live_observation"] = live_status
+    response["fingerprints"] = {"count": fingerprint_mapper.fingerprint_count()}
+    response["ai_analysis"] = build_ai_analysis(response)
 
     with state_lock:
         latest_telemetry = response
@@ -285,7 +294,17 @@ def scan() -> Dict[str, Any]:
 
 @app.get("/sources")
 def sources() -> Dict[str, Any]:
-    return {"sources": adapter.sources()}
+    live_status = adapter.get_live_status()
+    return {
+        "sources": adapter.get_sources(),
+        "live_available": adapter.live_available(),
+        "current_ssid": live_status.get("ssid") if live_status.get("ssid") != "unknown" else None,
+        "vendor_hint": live_status.get("vendor_hint") or "unknown",
+        "selected_source": adapter.get_selected_source(),
+        "confidence_ceiling": confidence_engine.DEFAULT_MODE_CEILINGS[MODE_WIFI_ONLY_NON_CSI],
+        "limitations": LIMITATIONS,
+        "notice": NOTICE,
+    }
 
 
 @app.get("/wifi/networks")
@@ -360,7 +379,7 @@ def select_source(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         selected = adapter.select_source(str(source_id))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {"selected": selected, "sources": adapter.sources()}
+    return {"selected": selected, "sources": adapter.get_sources()}
 
 
 @app.get("/map/current")
@@ -382,36 +401,34 @@ def current_map() -> Dict[str, Any]:
 
 @app.post("/calibrate/empty-room")
 def calibrate_empty_room() -> Dict[str, Any]:
-    observation = adapter.get_observation()
+    samples = _collect_calibration_samples()
+    observation = samples[-1]["observation"]
     payload = observation.to_dict()
+    baseline_id = f"empty_room_{_slug(utc_now_iso())}"
+    averaged_rssi = _average_rssi_by_bssid(samples)
     baseline = {
+        "baseline_id": baseline_id,
         "created_at": utc_now_iso(),
         "updated_at": utc_now_iso(),
         "mode": MODE_WIFI_ONLY_NON_CSI,
-        "source": SOURCE_SELECTED_WIFI_ENVIRONMENT,
-        "selected_network": _selected_wifi_network(),
-        "sample_count": 1,
-        "rssi_by_bssid": observation.rssi_by_bssid,
-        "observation": payload,
-        "signal_quality": {
-            "visible_access_points": observation.bssid_count,
-            "gateway_latency_ms": observation.gateway_latency_ms,
-            "jitter_ms": observation.jitter_ms,
-            "packet_loss": observation.packet_loss,
-            "rssi_stability": observation.scan_stability,
-        },
+        "source": adapter.get_selected_source_id(),
+        "selected_network": _selected_wifi_network(payload, samples[-1]["live_status"]),
+        "sample_count": len(samples),
+        "rssi_by_bssid": averaged_rssi,
+        "observation": _average_observation_payload(samples, averaged_rssi),
+        "signal_quality": _average_signal_quality(samples),
+        "status": "calibrated",
     }
+    save_json(BASELINE_DIR / f"{baseline_id}.json", baseline)
     save_json(EMPTY_ROOM_BASELINE_FILE, baseline)
-    adaptive_status = adaptive_baseline_engine.replace_baseline(payload)
+    adaptive_status = adaptive_baseline_engine.replace_baseline(baseline["observation"])
     return {
         "status": "calibrated",
-        "baseline": {
-            "available": True,
-            "sample_count": baseline["sample_count"],
-            "visible_access_points": observation.bssid_count,
-            "updated_at": baseline["updated_at"],
-            "adaptive_status": adaptive_status,
-        },
+        "baseline_id": baseline_id,
+        "sample_count": baseline["sample_count"],
+        "signal_quality": baseline["signal_quality"],
+        "selected_ssid": baseline["selected_network"].get("ssid"),
+        "baseline": {"available": True, "updated_at": baseline["updated_at"], "adaptive_status": adaptive_status},
         "limitations": LIMITATIONS,
         "notice": NOTICE,
     }
@@ -420,18 +437,36 @@ def calibrate_empty_room() -> Dict[str, Any]:
 @app.post("/calibrate/zone")
 def calibrate_zone(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     zone = str(payload.get("zone") or payload.get("zone_id") or "").strip()
+    label = str(payload.get("label") or zone).strip()
     if not zone:
         raise HTTPException(status_code=400, detail="zone is required")
-    observation = adapter.get_observation()
-    fingerprint = fingerprint_mapper.create_fingerprint(zone, observation.to_dict())
+    samples = _collect_calibration_samples()
+    observation = samples[-1]["observation"]
+    averaged_rssi = _average_rssi_by_bssid(samples)
+    fingerprint_id = f"{_slug(zone)}_{_slug(label)}_{_slug(utc_now_iso())}"
+    fingerprint = {
+        "fingerprint_id": fingerprint_id,
+        "zone": zone,
+        "label": label,
+        "created_at": utc_now_iso(),
+        "updated_at": utc_now_iso(),
+        "mode": MODE_WIFI_ONLY_NON_CSI,
+        "source": adapter.get_selected_source_id(),
+        "sample_count": len(samples),
+        "rssi_by_bssid": averaged_rssi,
+        "gateway_latency_ms": _mean(sample["observation"].gateway_latency_ms for sample in samples),
+        "jitter_ms": _mean(sample["observation"].jitter_ms for sample in samples),
+        "signal_quality": _average_signal_quality(samples),
+        "selected_network": _selected_wifi_network(observation.to_dict(), samples[-1]["live_status"]),
+    }
+    save_json(FINGERPRINT_DIR / f"{fingerprint_id}.json", fingerprint)
     return {
         "status": "calibrated",
+        "fingerprint_id": fingerprint_id,
         "zone": zone,
-        "fingerprint": {
-            "sample_count": fingerprint["sample_count"],
-            "visible_access_points": len(fingerprint["rssi_by_bssid"]),
-            "updated_at": fingerprint["updated_at"],
-        },
+        "label": label,
+        "sample_count": fingerprint["sample_count"],
+        "fingerprint": fingerprint,
         "fingerprint_count": fingerprint_mapper.fingerprint_count(),
         "limitations": LIMITATIONS,
         "notice": NOTICE,
@@ -509,11 +544,25 @@ def save_json(path: Path, payload: Any) -> None:
 
 
 def _selected_source() -> Optional[Dict[str, Any]]:
-    return next((source for source in adapter.sources() if source.get("selected")), None)
+    return next((source for source in adapter.get_sources() if source.get("selected")), None)
 
 
-def _selected_wifi_network() -> Dict[str, Any]:
-    return dict(selected_wifi_environment)
+def _selected_wifi_network(
+    observation_payload: Optional[Dict[str, Any]] = None,
+    live_status: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    live_status = live_status or {}
+    if adapter.get_selected_source_id() == SOURCE_LOCAL_WIFI_LIVE and live_status.get("ssid"):
+        return {
+            "ssid": live_status.get("ssid") or "unknown",
+            "vendor_hint": live_status.get("vendor_hint") or "unknown",
+            "bssid_masked": live_status.get("bssid_masked"),
+        }
+
+    selected = dict(selected_wifi_environment)
+    if observation_payload and observation_payload.get("ssid"):
+        selected.setdefault("ssid", observation_payload["ssid"])
+    return selected
 
 
 def _network_by_ssid(ssid: str) -> Optional[WifiNetworkEnvironment]:
@@ -551,6 +600,16 @@ def _selected_zone(zone_hint: Any, zone_map: Dict[str, float]) -> str:
 
 def _raw_confidence(motion_score: float, quality_score: float, zone_score: float) -> float:
     return round(min(0.95, 0.25 + (quality_score * 0.32) + (motion_score * 0.28) + (zone_score * 0.18)), 2)
+
+
+def _bounded_presence(presence: str, quality_score: float, packet_loss: float) -> str:
+    if quality_score < 0.22 or packet_loss >= 0.75:
+        return "unstable_scan"
+    if presence == "presence_detected":
+        return "possible_presence"
+    if presence in {"possible_motion", "possible_presence", "clear", "unstable_scan"}:
+        return presence
+    return "possible_motion" if presence not in {"clear", "unknown"} else "clear"
 
 
 def _map_ambiguity(zone_map: Dict[str, float]) -> float:
@@ -628,6 +687,67 @@ def _update_adaptive_baseline(
     )
 
 
+def _collect_calibration_samples(sample_count: int = 5, interval_seconds: float = 0.08) -> list[Dict[str, Any]]:
+    samples: list[Dict[str, Any]] = []
+    for index in range(sample_count):
+        observation = adapter.get_observation()
+        samples.append({"observation": observation, "live_status": adapter.get_live_status()})
+        if index < sample_count - 1:
+            time.sleep(interval_seconds)
+    return samples
+
+
+def _average_rssi_by_bssid(samples: list[Dict[str, Any]]) -> Dict[str, float]:
+    grouped: Dict[str, list[float]] = {}
+    for sample in samples:
+        observation = sample["observation"]
+        for bssid, rssi in observation.rssi_by_bssid.items():
+            grouped.setdefault(str(bssid).lower(), []).append(float(rssi))
+    return {bssid: round(_mean(values), 2) for bssid, values in grouped.items()}
+
+
+def _average_observation_payload(samples: list[Dict[str, Any]], averaged_rssi: Dict[str, float]) -> Dict[str, Any]:
+    observation = samples[-1]["observation"]
+    payload = observation.to_dict()
+    payload["rssi_by_bssid"] = averaged_rssi
+    payload["sample_count"] = len(samples)
+    payload["mean_rssi"] = round(_mean(sample["observation"].mean_rssi for sample in samples), 2)
+    payload["gateway_latency_ms"] = round(_mean(sample["observation"].gateway_latency_ms for sample in samples), 2)
+    payload["jitter_ms"] = round(_mean(sample["observation"].jitter_ms for sample in samples), 2)
+    payload["packet_loss"] = round(_mean(sample["observation"].packet_loss for sample in samples), 4)
+    payload["scan_stability"] = round(_mean(sample["observation"].scan_stability for sample in samples), 3)
+    return payload
+
+
+def _average_signal_quality(samples: list[Dict[str, Any]]) -> Dict[str, Any]:
+    observations = [sample["observation"] for sample in samples]
+    live_status = samples[-1]["live_status"]
+    return {
+        "visible_access_points": int(round(_mean(observation.bssid_count for observation in observations))),
+        "gateway_latency_ms": round(_mean(observation.gateway_latency_ms for observation in observations), 2),
+        "jitter_ms": round(_mean(observation.jitter_ms for observation in observations), 2),
+        "packet_loss": round(_mean(observation.packet_loss for observation in observations), 4),
+        "rssi_stability": round(_mean(observation.scan_stability for observation in observations), 3),
+        "rssi_dbm": _optional_signal_float(live_status.get("rssi_dbm"), observations[-1].mean_rssi),
+        "noise_dbm": _optional_signal_float(live_status.get("noise_dbm"), None),
+    }
+
+
+def _mean(values: Any) -> float:
+    numbers = [float(value) for value in values]
+    return sum(numbers) / len(numbers) if numbers else 0.0
+
+
+def _optional_signal_float(value: Any, fallback: Any) -> Optional[float]:
+    candidate = value if value is not None else fallback
+    if candidate is None:
+        return None
+    try:
+        return round(float(candidate), 3)
+    except (TypeError, ValueError):
+        return None
+
+
 def empty_session_state() -> Dict[str, Any]:
     return {
         "session_id": None,
@@ -645,38 +765,24 @@ def env_flag_enabled(name: str) -> bool:
 
 def ai_status_payload() -> Dict[str, Any]:
     return {
-        "enabled": env_flag_enabled(AI_ANALYSIS_ENV),
+        "enabled": True,
         "provider": "fallback",
         "mode": AI_MODE,
         "excluded_layers": AI_EXCLUDED_LAYERS,
+        "confidence_policy": "never_increase_scan_confidence",
+        "limitations": LIMITATIONS,
     }
 
 
 def build_ai_analysis(scan_payload: Dict[str, Any]) -> Dict[str, Any]:
-    presence = str(scan_payload.get("presence") or "unknown")
-    if presence == "presence_detected":
-        summary = "Presence-like WiFi signal disturbance detected in the scan."
-    elif presence == "possible_presence":
-        summary = "Scan shows possible presence-like WiFi signal disturbance."
-    elif presence == "clear":
-        summary = "Scan is currently consistent with a clear environment."
-    else:
-        summary = "Scan analysis completed with an unknown presence state."
-
+    analysis = ai_analyzer.analyze(scan_payload).to_dict()
     return {
-        "available": True,
-        "provider": "fallback",
-        "mode": AI_MODE,
-        "summary": summary,
-        "confidence": scan_payload.get("confidence", 0.0),
-        "signals": {
-            "presence": presence,
-            "motion_score": scan_payload.get("motion_score", 0.0),
-            "zone": scan_payload.get("zone", "unknown"),
-        },
-        "excluded_layers": AI_EXCLUDED_LAYERS,
-        "limitations": [
-            LIMITATIONS,
-            "No autonomy, targeting, weapons, mission command, robotics control, or C4ISR layers are used.",
-        ],
+        "summary": analysis["summary"],
+        "confidence_explanation": analysis["confidence_explanation"],
+        "false_positive_risks": analysis["false_positive_risks"],
+        "recommended_next_action": analysis["recommended_next_action"],
+        "confidence": min(float(scan_payload.get("confidence", 0.0)), float(analysis.get("confidence", 0.0))),
+        "provider": analysis["provider"],
+        "model": analysis["model"],
+        "limitations": analysis["limitations"],
     }
