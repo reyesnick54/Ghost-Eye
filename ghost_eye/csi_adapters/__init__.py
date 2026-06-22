@@ -18,10 +18,11 @@ from .simulator_adapter import (
     WiFiSignalSimulatorAdapter,
 )
 from .wifi_only_adapter import (
+    SOURCE_LOCAL_WIFI_LIVE,
+    SOURCE_LOCAL_WIFI_SIMULATED,
     WiFiOnlyAdapter,
     WifiObservationBatch,
     WifiObservationProvider,
-    WifiOnlyAdapter,
 )
 
 __all__ = [
@@ -30,10 +31,11 @@ __all__ = [
     "WIFI_ONLY_NON_CSI_MODE",
     "SimulatedAccessPoint",
     "SimulatorAdapter",
+    "SOURCE_LOCAL_WIFI_LIVE",
+    "SOURCE_LOCAL_WIFI_SIMULATED",
     "WiFiOnlyAdapter",
     "WiFiSignalObservation",
     "WiFiSignalSimulatorAdapter",
     "WifiObservationBatch",
     "WifiObservationProvider",
-    "WifiOnlyAdapter",
 ]

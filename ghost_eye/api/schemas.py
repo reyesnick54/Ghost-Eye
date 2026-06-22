@@ -8,11 +8,12 @@ from typing import Any, Dict, List, Literal, Mapping, Optional, Tuple
 
 
 MODE_WIFI_ONLY_NON_CSI = "wifi_only_non_csi"
+SOURCE_LOCAL_WIFI_LIVE = "local_wifi_rssi_latency_live"
 SOURCE_LOCAL_WIFI_SIMULATED = "local_wifi_rssi_latency_simulated"
 SOURCE_SELECTED_WIFI_ENVIRONMENT = "selected_wifi_environment"
 LIMITATIONS = (
     "WiFi-only non-CSI mode provides coarse probabilistic estimates only. "
-    "It does not provide validated through-wall imaging."
+    "It does not provide validated through-wall object imaging."
 )
 NOTICE = (
     "Authorized controlled environments only. Not for covert surveillance or "
@@ -20,7 +21,7 @@ NOTICE = (
 )
 WIFI_NETWORK_LIMITATIONS = (
     "Ordinary WiFi network selection does not provide raw CSI or reliable "
-    "through-wall imaging."
+    "through-wall object imaging."
 )
 ROOM_SETUP_LIMITATIONS = (
     "Room shape is user-configured. WiFi-only mode estimates probabilistic "
@@ -58,7 +59,7 @@ class ApiScanResponse:
 class ApiInferenceResponse:
     """Compatibility schema for presence, motion, and zone inference."""
 
-    presence: Literal["clear", "possible_presence", "presence_detected"]
+    presence: Literal["clear", "possible_motion", "possible_presence", "unstable_scan"]
     motion_score: float
     zone: str
     confidence: float
@@ -68,13 +69,15 @@ class ApiInferenceResponse:
 
 @dataclass(frozen=True)
 class SignalQuality:
-    """Quality summary included in every v0.2 scan response."""
+    """Quality summary included in every scan response."""
 
     visible_access_points: int
     gateway_latency_ms: float
     jitter_ms: float
     packet_loss: float
     rssi_stability: float
+    rssi_dbm: Optional[float] = None
+    noise_dbm: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -125,6 +128,7 @@ class SelectedNetwork:
 
     ssid: str
     vendor_hint: str
+    bssid_masked: Optional[str] = None
 
 
 @dataclass(frozen=True)

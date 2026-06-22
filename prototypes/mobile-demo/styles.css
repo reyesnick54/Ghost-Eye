@@ -1,0 +1,375 @@
+:root {
+  --bg: #05070a;
+  --panel: #101722;
+  --panel-2: #172233;
+  --line: rgba(255, 255, 255, 0.09);
+  --text: #f3f7fb;
+  --muted: #91a3b8;
+  --accent: #69f0ff;
+  --accent-2: #7c5cff;
+  --good: #72f2a1;
+  --warn: #ffd166;
+  --danger: #ff6b6b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(105, 240, 255, 0.14), transparent 34%),
+    linear-gradient(180deg, #05070a 0%, #0b1119 100%);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #02040a;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.app-shell {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.card {
+  background: rgba(16, 23, 34, 0.94);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  padding: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+}
+
+.hero,
+.card-title,
+.connection-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.hero {
+  margin-bottom: 16px;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+h1,
+h2 {
+  margin: 0;
+}
+
+h1 {
+  font-size: clamp(28px, 5vw, 44px);
+}
+
+h2 {
+  font-size: 18px;
+}
+
+.subtle,
+.hint,
+.muted {
+  color: var(--muted);
+}
+
+.hint {
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+
+.status-pill,
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(105, 240, 255, 0.28);
+  background: rgba(105, 240, 255, 0.10);
+  color: var(--accent);
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.status-pill.online,
+.badge.netgear,
+.badge.tp_link {
+  color: var(--good);
+  border-color: rgba(114, 242, 161, 0.28);
+  background: rgba(114, 242, 161, 0.10);
+}
+
+.status-pill.offline {
+  color: var(--danger);
+  border-color: rgba(255, 107, 107, 0.28);
+  background: rgba(255, 107, 107, 0.10);
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.connection-card {
+  margin-bottom: 16px;
+}
+
+.connection-card label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.connection-row input {
+  flex: 1;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0 0;
+}
+
+.kv div,
+.metric {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px;
+}
+
+dt,
+.metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+dd {
+  margin: 0;
+  font-weight: 800;
+  word-break: break-word;
+}
+
+.zone-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.zone-buttons button {
+  padding: 10px;
+  font-size: 13px;
+}
+
+.dashboard {
+  margin-top: 16px;
+}
+
+.radar-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(240px, 0.9fr);
+  gap: 18px;
+  align-items: center;
+  margin-top: 18px;
+}
+
+.radar {
+  position: relative;
+  width: min(420px, 100%);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 1px solid rgba(105, 240, 255, 0.35);
+  background:
+    radial-gradient(circle, rgba(105, 240, 255, 0.18), transparent 58%),
+    conic-gradient(from 0deg, rgba(105, 240, 255, 0.12), transparent 50%, rgba(124, 92, 255, 0.12));
+  overflow: hidden;
+}
+
+.ring {
+  position: absolute;
+  inset: 18%;
+  border: 1px solid rgba(105, 240, 255, 0.18);
+  border-radius: 50%;
+}
+
+.ring-two {
+  inset: 34%;
+}
+
+.sweep {
+  position: absolute;
+  inset: 0;
+  background: conic-gradient(from 0deg, rgba(105, 240, 255, 0.30), transparent 22%);
+  animation: sweep 4s linear infinite;
+}
+
+.zone-dot {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-weight: 900;
+  transform: scale(var(--scale, 1));
+  box-shadow: 0 0 calc(12px + 28px * var(--score, 0)) rgba(105, 240, 255, 0.45);
+}
+
+.zone-a {
+  left: 22%;
+  top: 54%;
+}
+
+.zone-b {
+  left: 45%;
+  top: 26%;
+}
+
+.zone-c {
+  right: 18%;
+  bottom: 24%;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metric strong {
+  font-size: 24px;
+  word-break: break-word;
+}
+
+.panel-text {
+  line-height: 1.5;
+}
+
+.risk-list {
+  margin: 12px 0;
+  padding-left: 18px;
+  color: var(--warn);
+}
+
+.action {
+  color: var(--good);
+  font-weight: 700;
+}
+
+pre {
+  max-height: 220px;
+  overflow: auto;
+  margin: 12px 0 0;
+  white-space: pre-wrap;
+  color: var(--muted);
+}
+
+.notice {
+  margin-top: 16px;
+  color: var(--warn);
+  background: rgba(255, 209, 102, 0.10);
+  border: 1px solid rgba(255, 209, 102, 0.22);
+  padding: 14px;
+  border-radius: 16px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.timestamp {
+  color: var(--muted);
+  text-align: center;
+  font-size: 12px;
+  margin: 16px 0 0;
+}
+
+@keyframes sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 780px) {
+  .app-shell {
+    padding: 16px;
+  }
+
+  .hero,
+  .connection-row,
+  .card-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .grid.two,
+  .radar-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .kv,
+  .metrics,
+  .zone-buttons {
+    grid-template-columns: 1fr;
+  }
+}

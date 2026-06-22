@@ -111,9 +111,9 @@ class DisturbanceFieldDetector:
         )
 
         if motion_score >= 0.70:
-            presence = "presence_detected"
-        elif motion_score >= 0.35:
             presence = "possible_presence"
+        elif motion_score >= 0.35:
+            presence = "possible_motion"
         else:
             presence = "clear"
 

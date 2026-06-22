@@ -1,9 +1,17 @@
-"""WiFi-only adapter facade for GhostEye v0.2."""
+"""WiFi-only adapter facade for GhostEye live RSSI/latency sensing."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Protocol, Union
+
+from ghost_eye.api.schemas import (
+    LIMITATIONS,
+    MODE_WIFI_ONLY_NON_CSI,
+    SOURCE_LOCAL_WIFI_LIVE,
+    SOURCE_LOCAL_WIFI_SIMULATED,
+)
+from ghost_eye.wifi.live_observation import LiveObservationCollector
 
 from .simulator_adapter import (
     WIFI_ONLY_NON_CSI_MODE,
@@ -35,51 +43,113 @@ class WiFiOnlyAdapter:
     adapter_name = "wifi_only_non_csi"
     mode = WIFI_ONLY_NON_CSI_MODE
     is_csi_adapter = False
+    confidence_ceiling = 0.65
 
     def __init__(
         self,
         simulated: bool = True,
         simulator: Optional[WiFiSignalSimulatorAdapter] = None,
         scanner: Optional[ObservationSource] = None,
+        live_collector: Optional[LiveObservationCollector] = None,
+        prefer_live: bool = True,
         **simulator_kwargs: Any,
     ) -> None:
-        if not simulated and scanner is None:
-            raise ValueError("A scanner callback is required when simulated is False")
-
         self.simulated = simulated
         self._scanner = scanner
         self._simulator = simulator or WiFiSignalSimulatorAdapter(**simulator_kwargs)
-        self._selected_source_id = "local_wifi_rssi_latency_simulated"
+        self._live_collector = live_collector or LiveObservationCollector()
+        self._selected_source_id = SOURCE_LOCAL_WIFI_LIVE if prefer_live else SOURCE_LOCAL_WIFI_SIMULATED
+        self._last_source_id = SOURCE_LOCAL_WIFI_SIMULATED
         self._selected_wifi_ssid = getattr(self._simulator, "ssid", "GhostEye-Simulated")
+        self._last_live_normalized: dict[str, Any] | None = None
 
-    def sources(self) -> list[dict[str, Any]]:
+    def get_live_observation(self) -> WiFiSignalObservation | None:
+        """Return one live WiFi observation, or ``None`` when unavailable."""
+
+        try:
+            snapshot = self._live_collector.collect()
+        except Exception:
+            return None
+
+        self._last_live_normalized = dict(snapshot.normalized)
+        if not snapshot.normalized.get("available"):
+            return None
+        self._selected_wifi_ssid = str(snapshot.normalized.get("ssid") or self._selected_wifi_ssid)
+        return snapshot.observation
+
+    def get_sources(self) -> list[dict[str, Any]]:
         """Return available sources for the API."""
+
+        live_available = self.live_available()
+        live_status = self._last_live_normalized or {}
+        current_ssid = live_status.get("ssid") if live_status.get("ssid") != "unknown" else None
+        vendor_hint = live_status.get("vendor_hint") or "unknown"
 
         return [
             {
-                "id": "local_wifi_rssi_latency_simulated",
+                "id": SOURCE_LOCAL_WIFI_LIVE,
+                "name": "Local live WiFi RSSI + gateway latency",
+                "mode": self.mode,
+                "type": "wifi_rssi_latency",
+                "simulated": False,
+                "live": True,
+                "available": live_available,
+                "selected": self._selected_source_id == SOURCE_LOCAL_WIFI_LIVE,
+                "current_ssid": current_ssid,
+                "vendor_hint": vendor_hint,
+                "confidence_ceiling": self.confidence_ceiling,
+                "capabilities": ["current_ssid", "rssi", "noise", "channel", "tx_rate", "gateway_latency", "jitter", "packet_loss"],
+                "csi": False,
+                "can_use_as_csi_sensor": False,
+                "limitations": LIMITATIONS,
+                "status": "available" if live_available else "unavailable",
+            },
+            {
+                "id": SOURCE_LOCAL_WIFI_SIMULATED,
                 "name": "Local WiFi RSSI + gateway latency simulator",
                 "mode": self.mode,
                 "type": "wifi_rssi_latency",
-                "simulated": self.simulated,
-                "selected": self._selected_source_id == "local_wifi_rssi_latency_simulated",
+                "simulated": True,
+                "live": False,
+                "available": True,
+                "selected": self._selected_source_id == SOURCE_LOCAL_WIFI_SIMULATED,
+                "selected_wifi_ssid": self._selected_wifi_ssid,
+                "confidence_ceiling": self.confidence_ceiling,
                 "capabilities": ["rssi_scan", "gateway_latency", "jitter", "packet_loss"],
                 "csi": False,
                 "can_use_as_csi_sensor": False,
-                "selected_wifi_ssid": self._selected_wifi_ssid,
                 "limitations": "Ordinary WiFi APIs do not provide raw CSI in this mode.",
                 "status": "available",
-            }
+            },
         ]
+
+    def sources(self) -> list[dict[str, Any]]:
+        """Compatibility alias for the API."""
+
+        return self.get_sources()
+
+    def get_selected_source(self) -> dict[str, Any]:
+        """Return the currently selected source descriptor."""
+
+        selected = next((source for source in self.get_sources() if source["id"] == self._selected_source_id), None)
+        if selected is None:
+            return self.get_sources()[0]
+        return selected
+
+    def get_selected_source_id(self) -> str:
+        """Return the source used for the most recent observation."""
+
+        return self._last_source_id
 
     def select_source(self, source_id: str) -> dict[str, Any]:
         """Select a configured source by ID."""
 
-        for source in self.sources():
-            if source["id"] == source_id:
-                self._selected_source_id = source_id
-                return {**source, "selected": True}
-        raise ValueError(f"Unknown source: {source_id}")
+        source_id = str(source_id).strip()
+        valid = {SOURCE_LOCAL_WIFI_LIVE, SOURCE_LOCAL_WIFI_SIMULATED}
+        if source_id not in valid:
+            raise ValueError(f"Unknown source: {source_id}")
+        self._selected_source_id = source_id
+        return {**self.get_selected_source(), "selected": True}
 
     def select_wifi_environment(self, ssid: str) -> dict[str, Any]:
         """Set the selected WiFi environment label without enabling CSI capture."""
@@ -97,21 +167,54 @@ class WiFiOnlyAdapter:
             "can_use_as_csi_sensor": False,
         }
 
+    def get_capability_profile(self) -> dict[str, Any]:
+        """Return source capabilities and the non-CSI confidence ceiling."""
+
+        return {
+            "mode": MODE_WIFI_ONLY_NON_CSI,
+            "selected_source": self._selected_source_id,
+            "last_source": self._last_source_id,
+            "live_available": self.live_available(),
+            "supports_rssi_scan": True,
+            "supports_gateway_latency": True,
+            "supports_csi": False,
+            "confidence_ceiling": self.confidence_ceiling,
+            "limitations": LIMITATIONS,
+        }
+
+    def live_available(self) -> bool:
+        """Return whether the live source currently has usable WiFi data."""
+
+        if self._last_live_normalized and self._last_live_normalized.get("available"):
+            return True
+        return self._live_collector.available()
+
+    def get_live_status(self) -> dict[str, Any]:
+        """Return the latest live normalized measurement if available."""
+
+        return dict(self._last_live_normalized or {})
+
     def get_observation(self) -> WiFiSignalObservation:
         """Return one WiFi-only, non-CSI signal observation."""
 
-        if self.simulated:
-            return self._simulator.get_observation()
+        if self._selected_source_id == SOURCE_LOCAL_WIFI_LIVE:
+            live_observation = self.get_live_observation()
+            if live_observation is not None:
+                self._validate_mode(live_observation)
+                self._last_source_id = SOURCE_LOCAL_WIFI_LIVE
+                return live_observation
 
-        assert self._scanner is not None
-        observation = self._scanner()
-        if isinstance(observation, WiFiSignalObservation):
-            self._validate_mode(observation)
-            return observation
+        if not self.simulated and self._scanner is not None:
+            observation = self._scanner()
+            normalized = observation if isinstance(observation, WiFiSignalObservation) else WiFiSignalObservation(**observation)
+            self._validate_mode(normalized)
+            self._last_source_id = self._selected_source_id
+            return normalized
 
-        normalized = WiFiSignalObservation(**observation)
-        self._validate_mode(normalized)
-        return normalized
+        simulated_observation = self._simulator.get_observation()
+        self._validate_mode(simulated_observation)
+        self._last_source_id = SOURCE_LOCAL_WIFI_SIMULATED
+        return simulated_observation
 
     def observe(self) -> WiFiSignalObservation:
         """Compatibility alias for older backend code."""

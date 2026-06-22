@@ -3,276 +3,121 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Abraxas GhostEye Demo</title>
-  <style>
-    :root {
-      --bg: #05070a;
-      --panel: #10151d;
-      --panel-2: #161d28;
-      --text: #f3f7fb;
-      --muted: #8ea0b5;
-      --accent: #69f0ff;
-      --warn: #ffd166;
-      --good: #72f2a1;
-      --danger: #ff6b6b;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background:
-        radial-gradient(circle at top, rgba(105, 240, 255, 0.12), transparent 34%),
-        linear-gradient(180deg, #05070a 0%, #0b1119 100%);
-      color: var(--text);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-    }
-
-    .phone {
-      width: 100%;
-      max-width: 430px;
-      min-height: 760px;
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 36px;
-      background: linear-gradient(180deg, rgba(16,21,29,0.98), rgba(5,7,10,0.98));
-      box-shadow: 0 24px 80px rgba(0,0,0,0.55);
-      overflow: hidden;
-      padding: 24px;
-    }
-
-    .topbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 28px;
-    }
-
-    .brand {
-      line-height: 1.1;
-    }
-
-    .brand small {
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.16em;
-      font-size: 11px;
-    }
-
-    .brand h1 {
-      margin: 4px 0 0;
-      font-size: 26px;
-    }
-
-    .status-pill {
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: rgba(114,242,161,0.12);
-      color: var(--good);
-      font-size: 13px;
-      border: 1px solid rgba(114,242,161,0.28);
-    }
-
-    .radar-card {
-      background: radial-gradient(circle, rgba(105,240,255,0.20), rgba(22,29,40,0.94) 58%);
-      border: 1px solid rgba(105,240,255,0.22);
-      border-radius: 28px;
-      padding: 26px;
-      min-height: 280px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .radar {
-      width: 190px;
-      height: 190px;
-      border-radius: 50%;
-      border: 1px solid rgba(105,240,255,0.35);
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .radar::before,
-    .radar::after {
-      content: "";
-      position: absolute;
-      border-radius: 50%;
-      border: 1px solid rgba(105,240,255,0.20);
-    }
-
-    .radar::before {
-      width: 125px;
-      height: 125px;
-    }
-
-    .radar::after {
-      width: 70px;
-      height: 70px;
-    }
-
-    .dot {
-      width: 16px;
-      height: 16px;
-      background: var(--accent);
-      border-radius: 50%;
-      box-shadow: 0 0 26px var(--accent);
-    }
-
-    .presence {
-      margin-top: 20px;
-      font-size: 18px;
-      font-weight: 700;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
-      margin-top: 18px;
-    }
-
-    .metric {
-      background: var(--panel-2);
-      border: 1px solid rgba(255,255,255,0.07);
-      border-radius: 20px;
-      padding: 16px;
-    }
-
-    .metric label {
-      display: block;
-      color: var(--muted);
-      font-size: 12px;
-      margin-bottom: 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-
-    .metric strong {
-      font-size: 24px;
-    }
-
-    button {
-      width: 100%;
-      border: none;
-      margin-top: 22px;
-      padding: 17px 20px;
-      border-radius: 18px;
-      background: linear-gradient(135deg, #69f0ff, #7c5cff);
-      color: #02040a;
-      font-size: 16px;
-      font-weight: 800;
-      cursor: pointer;
-    }
-
-    .notice {
-      color: var(--warn);
-      background: rgba(255,209,102,0.10);
-      border: 1px solid rgba(255,209,102,0.22);
-      padding: 14px;
-      border-radius: 16px;
-      font-size: 13px;
-      line-height: 1.45;
-      margin-top: 18px;
-    }
-
-    .timestamp {
-      color: var(--muted);
-      font-size: 12px;
-      margin-top: 14px;
-      text-align: center;
-    }
-  </style>
+  <title>GhostEye WiFi-Only Live v0.3</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <main class="phone">
-    <section class="topbar">
-      <div class="brand">
-        <small>Abraxas</small>
-        <h1>GhostEye</h1>
+  <main class="app-shell">
+    <section class="hero card">
+      <div>
+        <p class="eyebrow">GhostEye WiFi-Only Live v0.3</p>
+        <h1>Controlled Live WiFi Demo</h1>
+        <p class="subtle">
+          Coarse RSSI + gateway latency telemetry from the backend MacBook.
+          Authorized, consent-based environments only.
+        </p>
       </div>
-      <div class="status-pill" id="apiStatus">Demo Mode</div>
+      <span class="status-pill" id="connectionStatus">Disconnected</span>
     </section>
 
-    <section class="radar-card">
-      <div class="radar">
-        <div class="dot" id="presenceDot"></div>
+    <section class="card connection-card">
+      <label for="backendUrl">Backend URL</label>
+      <div class="connection-row">
+        <input id="backendUrl" type="url" value="http://localhost:8000" />
+        <button id="connectButton" type="button">Connect</button>
       </div>
-      <div class="presence" id="presence">Awaiting scan</div>
+      <p class="hint">Start the backend with uvicorn, then connect from this browser.</p>
     </section>
 
-    <section class="grid">
-      <div class="metric">
-        <label>Motion Score</label>
-        <strong id="motionScore">--</strong>
+    <section class="grid two">
+      <article class="card">
+        <div class="card-title">
+          <h2>Live Source</h2>
+          <span class="badge" id="vendorBadge">Unknown</span>
+        </div>
+        <dl class="kv">
+          <div><dt>Selected</dt><dd id="selectedSource">--</dd></div>
+          <div><dt>Live available</dt><dd id="liveAvailable">--</dd></div>
+          <div><dt>SSID</dt><dd id="currentSsid">--</dd></div>
+          <div><dt>Ceiling</dt><dd id="confidenceCeiling">0.65</dd></div>
+        </dl>
+      </article>
+
+      <article class="card">
+        <div class="card-title">
+          <h2>Calibration</h2>
+        </div>
+        <button id="emptyRoomButton" type="button">Empty-room calibration</button>
+        <div class="zone-buttons">
+          <button data-zone="zone_a" type="button">Calibrate zone A</button>
+          <button data-zone="zone_b" type="button">Calibrate zone B</button>
+          <button data-zone="zone_c" type="button">Calibrate zone C</button>
+        </div>
+        <p class="hint" id="calibrationStatus">No calibration action yet.</p>
+      </article>
+    </section>
+
+    <section class="card dashboard">
+      <div class="card-title">
+        <h2>Live Scan Dashboard</h2>
+        <button id="scanButton" type="button">Run scan</button>
       </div>
-      <div class="metric">
-        <label>Confidence</label>
-        <strong id="confidence">--</strong>
-      </div>
-      <div class="metric">
-        <label>Zone</label>
-        <strong id="zone">--</strong>
-      </div>
-      <div class="metric">
-        <label>Mode</label>
-        <strong id="mode">SIM</strong>
+
+      <div class="radar-layout">
+        <div class="radar">
+          <div class="ring ring-one"></div>
+          <div class="ring ring-two"></div>
+          <div class="sweep"></div>
+          <div class="zone-dot zone-a" id="dotZoneA">A</div>
+          <div class="zone-dot zone-b" id="dotZoneB">B</div>
+          <div class="zone-dot zone-c" id="dotZoneC">C</div>
+        </div>
+        <div class="metrics">
+          <div class="metric"><span>Presence</span><strong id="presence">Awaiting scan</strong></div>
+          <div class="metric"><span>Motion</span><strong id="motionScore">--</strong></div>
+          <div class="metric"><span>Zone</span><strong id="zone">--</strong></div>
+          <div class="metric"><span>Confidence</span><strong id="confidence">--</strong></div>
+        </div>
       </div>
     </section>
 
-    <button onclick="runScan()">Run Controlled Scan</button>
+    <section class="grid two">
+      <article class="card">
+        <h2>AI Analysis</h2>
+        <p id="aiSummary" class="panel-text">No analysis yet.</p>
+        <p id="aiConfidence" class="panel-text muted"></p>
+        <ul id="aiRisks" class="risk-list"></ul>
+        <p id="aiAction" class="panel-text action"></p>
+      </article>
 
-    <div class="notice">
-      Demo simulation only. For authorized, consent-based, controlled environments. Not for covert surveillance or unauthorized monitoring.
-    </div>
+      <article class="card">
+        <h2>Signal Quality</h2>
+        <dl class="kv">
+          <div><dt>RSSI</dt><dd id="rssi">--</dd></div>
+          <div><dt>Noise</dt><dd id="noise">--</dd></div>
+          <div><dt>Latency</dt><dd id="latency">--</dd></div>
+          <div><dt>Jitter</dt><dd id="jitter">--</dd></div>
+          <div><dt>Packet loss</dt><dd id="packetLoss">--</dd></div>
+          <div><dt>RSSI stability</dt><dd id="rssiStability">--</dd></div>
+        </dl>
+      </article>
+    </section>
 
-    <div class="timestamp" id="timestamp">No scan yet</div>
+    <section class="card">
+      <h2>Session Latest</h2>
+      <pre id="sessionLatest">No session loaded.</pre>
+    </section>
+
+    <section class="notice">
+      WiFi-only non-CSI mode provides coarse probabilistic estimates only. It does not
+      provide validated through-wall object imaging, exact object detection, or exact
+      person location. Authorized controlled environments only. Not for covert
+      surveillance or unauthorized monitoring.
+    </section>
+
+    <p class="timestamp" id="timestamp">No scan yet</p>
   </main>
 
-  <script>
-    const API_URL = "http://localhost:8000/scan";
-
-    function formatPresence(value) {
-      return value
-        .replaceAll("_", " ")
-        .replace(/\b\w/g, char => char.toUpperCase());
-    }
-
-    async function runScan() {
-      const status = document.getElementById("apiStatus");
-      status.textContent = "Scanning";
-
-      try {
-        const response = await fetch(API_URL);
-        const data = await response.json();
-
-        document.getElementById("presence").textContent = formatPresence(data.presence);
-        document.getElementById("motionScore").textContent = data.motion_score;
-        document.getElementById("confidence").textContent = data.confidence;
-        document.getElementById("zone").textContent = data.zone.toUpperCase();
-        document.getElementById("mode").textContent = data.mode.toUpperCase().slice(0, 3);
-        document.getElementById("timestamp").textContent = data.timestamp;
-        status.textContent = "Online";
-      } catch (error) {
-        status.textContent = "API Offline";
-        document.getElementById("presence").textContent = "Backend not connected";
-        document.getElementById("timestamp").textContent = "Start FastAPI at localhost:8000";
-      }
-    }
-
-    setInterval(runScan, 3000);
-    runScan();
-  </script>
+  <script src="app.js"></script>
 </body>
 </html>
