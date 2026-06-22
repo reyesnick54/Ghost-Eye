@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Mapping
 
 
-DEFAULT_AI_ANALYSIS = "true"
+DEFAULT_AI_ANALYSIS = "false"
 DEFAULT_AI_PROVIDER = "fallback"
 DEFAULT_S3M_PATH = ""
 SAFE_LIMITATION_NOTICE = (

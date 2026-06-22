@@ -100,6 +100,7 @@ def normalize_live_measurement(
         "channel": wifi.get("channel"),
         "tx_rate_mbps": _optional_float(wifi.get("tx_rate_mbps")),
         "phy_mode": wifi.get("phy_mode"),
+        "interface": wifi.get("interface_name"),
         "interface_name": wifi.get("interface_name"),
         "visible_access_points": visible_access_points,
         "gateway_ip": probe.get("gateway_ip"),
@@ -116,6 +117,9 @@ def normalize_live_measurement(
         "probe_status": probe.get("probe_status") or "unknown",
         "scan_status": wifi.get("status") or "unknown",
         "available": bool(wifi.get("available")),
+        "wifi_errors": list(wifi.get("errors") or []),
+        "gateway_errors": list(probe.get("errors") or []),
+        "live_error": _live_error(wifi, probe),
     }
 
 
@@ -156,3 +160,18 @@ def _float_or(value: Any, default: float) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _live_error(wifi: Mapping[str, Any], probe: Mapping[str, Any]) -> str | None:
+    if wifi.get("available"):
+        return None
+    scan_status = str(wifi.get("status") or "unknown")
+    probe_status = str(probe.get("probe_status") or "unknown")
+    wifi_errors = ",".join(str(error) for error in wifi.get("errors") or [])
+    gateway_errors = ",".join(str(error) for error in probe.get("errors") or [])
+    details = [f"wifi_scan={scan_status}", f"gateway_probe={probe_status}"]
+    if wifi_errors:
+        details.append(f"wifi_errors={wifi_errors}")
+    if gateway_errors:
+        details.append(f"gateway_errors={gateway_errors}")
+    return "; ".join(details)
