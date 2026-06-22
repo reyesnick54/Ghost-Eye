@@ -1,3 +1,6 @@
+import type { AIAnalysis } from "./ai";
+import type { CalibrationObservationState } from "./calibration";
+
 export const SAFETY_ACKNOWLEDGEMENT =
   "Abraxas GhostEye is intended only for authorized, consent-based, controlled-environment demonstrations and research. It must not be used for covert surveillance, unauthorized monitoring, or unlawful tracking.";
 
@@ -7,6 +10,135 @@ export const WIFI_ONLY_LIMITATION =
 export type ConnectionState = "idle" | "checking" | "connected" | "disconnected";
 
 export type ZoneId = "zone_a" | "zone_b" | "zone_c";
+
+export type GhostEyePlatform = "android" | "ios" | "web" | "unknown";
+
+export type RouterVendorHint = "netgear" | "tp_link" | "unknown";
+
+export type CapabilityMode =
+  | "android_wifi_observation"
+  | "android_wifi_scan_limited"
+  | "ios_network_limited"
+  | "web_unavailable"
+  | "native_unavailable";
+
+export type DeviceMotionState = "stable" | "moving" | "unknown";
+
+export interface SelectedNetworkObservation {
+  ssid?: string | null;
+  bssid_masked?: string | null;
+  vendor_hint: RouterVendorHint;
+  owned_authorized_confirmed: boolean;
+  confidence_ceiling: number;
+}
+
+export interface WifiCurrentObservation {
+  ssid?: string | null;
+  bssid_masked?: string | null;
+  rssi_dbm?: number | null;
+  link_speed_mbps?: number | null;
+  frequency_mhz?: number | null;
+  wifi_standard?: string | null;
+  normalized_signal_strength?: number | null;
+  capability_mode: CapabilityMode | string;
+  warnings?: string[];
+}
+
+export interface NearbyAccessPointObservation {
+  ssid?: string | null;
+  bssid_masked?: string | null;
+  rssi_dbm?: number | null;
+  level?: number | null;
+  frequency_mhz?: number | null;
+  capabilities?: string | null;
+  vendor_hint?: RouterVendorHint;
+}
+
+export interface WifiScanObservation {
+  visible_access_points: number;
+  target_router_seen: boolean;
+  access_points: NearbyAccessPointObservation[];
+  capability_mode: CapabilityMode | string;
+  scan_throttled?: boolean;
+  warnings?: string[];
+}
+
+export interface WifiRttCapabilities {
+  rtt_supported: boolean;
+  rtt_available: boolean;
+  rtt_permission_state: "granted" | "denied" | "unknown" | "not_required";
+  capability_mode: CapabilityMode | string;
+  warnings?: string[];
+}
+
+export interface NetworkProbeObservation {
+  cloud_latency_ms?: number | null;
+  router_probe_latency_ms?: number | null;
+  jitter_ms?: number | null;
+  packet_loss_estimate: number;
+  probe_count: number;
+  failed_probe_count: number;
+  warnings?: string[];
+}
+
+export interface DeviceMotionObservation {
+  state: DeviceMotionState;
+  confidence: number;
+  accelerometer_magnitude_std?: number | null;
+  gyroscope_magnitude_std?: number | null;
+  sample_count?: number;
+  capability_mode: CapabilityMode | string;
+  warnings?: string[];
+}
+
+export interface MobileObservationMetadata {
+  app_version: string;
+  observation_schema_version: "0.5";
+  rtt_supported?: boolean;
+  rtt_available?: boolean;
+  router_probe_host?: string | null;
+  upload_reason?: string;
+  limitations: string[];
+  [key: string]: string | number | boolean | null | string[] | undefined;
+}
+
+export interface MobileWifiObservation {
+  device_id: string;
+  team_id?: string | null;
+  session_id: string;
+  timestamp: string;
+  platform: GhostEyePlatform;
+  capability_mode: CapabilityMode | string;
+  selected_network?: SelectedNetworkObservation | null;
+  wifi_current: WifiCurrentObservation;
+  wifi_scan: WifiScanObservation;
+  network_probe: NetworkProbeObservation;
+  device_motion: DeviceMotionObservation;
+  calibration?: CalibrationObservationState | null;
+  metadata: MobileObservationMetadata;
+}
+
+export interface MobileObservationUploadResponse {
+  status?: string;
+  accepted?: boolean;
+  observation_id?: string;
+  telemetry_scan?: GhostEyeScanTelemetry;
+  scan?: GhostEyeScanTelemetry;
+  ai_analysis?: AIAnalysis;
+  notice?: string;
+  detail?: string;
+}
+
+export interface MobileObservationBatchResponse {
+  status?: string;
+  accepted?: number;
+  rejected?: number;
+  telemetry_scan?: GhostEyeScanTelemetry;
+  scan?: GhostEyeScanTelemetry;
+  ai_analysis?: AIAnalysis;
+  notice?: string;
+  detail?: string;
+}
 
 export interface SignalQuality {
   visible_access_points?: number;
