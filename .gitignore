@@ -3,6 +3,10 @@
 .venv/
 ghost_eye/backend/.venv/
 
+# Python bytecode caches
+__pycache__/
+*.py[cod]
+
 # Local Python virtual environments
 .venv/
 ghost_eye/backend/.venv/
